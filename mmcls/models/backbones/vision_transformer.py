@@ -3,11 +3,13 @@ import torch.nn as nn
 from mmcv.cnn import build_conv_layer, build_norm_layer
 from mmcv.cnn.bricks.registry import (TRANSFORMER_LAYER,
                                       TRANSFORMER_LAYER_SEQUENCE)
+from mmcv.cnn.bricks.transformer import (BaseTransformerLayer,
+                                         TransformerLayerSequence,
+                                         build_transformer_layer_sequence)
 from mmcv.runner.base_module import BaseModule
 
 from ..builder import BACKBONES
-from ..utils import (BaseTransformerLayer, TransformerLayerSequence,
-                     build_transformer_layer_sequence, to_2tuple)
+from ..utils import to_2tuple
 from .base_backbone import BaseBackbone
 
 
@@ -21,13 +23,8 @@ class VitTransformerEncoderLayer(BaseTransformerLayer):
         act_cfg (dict): The activation config for FFNs.
     """
 
-    def __init__(self,
-                 *args,
-                 ffn_dropout=0.0,
-                 act_cfg=dict(type='GELU'),
-                 **kwargs):
-        super(VitTransformerEncoderLayer, self).__init__(
-            *args, ffn_dropout=ffn_dropout, act_cfg=act_cfg, **kwargs)
+    def __init__(self, *args, **kwargs):
+        super(VitTransformerEncoderLayer, self).__init__(*args, **kwargs)
         assert len(self.operation_order) == 4
         assert set(self.operation_order) == set(['self_attn', 'norm', 'ffn'])
 

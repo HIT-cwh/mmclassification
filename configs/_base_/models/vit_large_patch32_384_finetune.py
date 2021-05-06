@@ -3,14 +3,39 @@ model = dict(
     type='ImageClassifier',
     backbone=dict(
         type='VisionTransformer',
-        num_layers=24,
         embed_dim=1024,
-        num_heads=16,
         img_size=384,
         patch_size=32,
         in_channels=3,
-        feedforward_channels=4096,
-        drop_rate=0.1),
+        drop_rate=0.1,
+        hybrid_backbone=None,
+        encoder=dict(
+            type='VitTransformerEncoder',
+            num_layers=24,
+            transformerlayers=dict(
+                type='VitTransformerEncoderLayer',
+                attn_cfgs=[
+                    dict(
+                        type='MultiheadAttention',
+                        embed_dims=1024,
+                        num_heads=16,
+                        attn_drop=0.,
+                        dropout_layer=dict(type='DropOut', drop_prob=0.1))
+                ],
+                ffn_cfgs=dict(
+                    embed_dims=1024,
+                    feedforward_channels=4096,
+                    num_fcs=2,
+                    ffn_drop=0.1,
+                    act_cfg=dict(type='GELU')),
+                operation_order=('norm', 'self_attn', 'norm', 'ffn'))),
+        init_cfg=[
+            dict(
+                type='Kaiming',
+                layer='Conv2d',
+                mode='fan_in',
+                nonlinearity='linear')
+        ]),
     neck=None,
     head=dict(
         type='VisionTransformerClsHead',
