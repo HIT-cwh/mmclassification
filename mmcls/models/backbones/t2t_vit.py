@@ -1,15 +1,19 @@
 import copy
 
 import numpy as np
+import torch
 import torch.nn as nn
 from mmcv import ConfigDict
 from mmcv.cnn import Linear, build_norm_layer
-from mmcv.cnn.bricks.registry import (ATTENTION, TRANSFORMER_LAYER,
+from mmcv.cnn.bricks.registry import (ATTENTION, POSITIONAL_ENCODING,
+                                      TRANSFORMER_LAYER,
                                       TRANSFORMER_LAYER_SEQUENCE)
 from mmcv.cnn.bricks.transformer import (BaseTransformerLayer,
                                          TransformerLayerSequence,
                                          build_dropout,
-                                         build_transformer_layer)
+                                         build_positional_encoding,
+                                         build_transformer_layer,
+                                         build_transformer_layer_sequence)
 from mmcv.runner.base_module import BaseModule, ModuleList
 
 from mmcls.models.backbones.base_backbone import BaseBackbone
@@ -109,6 +113,8 @@ class T2T_module(BaseModule):
                  token_dim=64,
                  init_cfg=None):
         super(T2T_module, self).__init__(init_cfg)
+
+        self.embed_dim = embed_dim
 
         if tokens_type == 'transformer':
             print('adopt transformer encoder for tokens-to-token')
@@ -217,6 +223,28 @@ class T2TTransformerEncoder(TransformerLayerSequence):
         return x
 
 
+@POSITIONAL_ENCODING.register_module()
+class SinusoidEncoding(object):
+
+    def __init__(self):
+        super(SinusoidEncoding, self).__init__()
+
+    def __call__(self, n_position, d_hid):
+
+        def get_position_angle_vec(position):
+            return [
+                position / np.power(10000, 2 * (hid_j // 2) / d_hid)
+                for hid_j in range(d_hid)
+            ]
+
+        sinusoid_table = np.array(
+            [get_position_angle_vec(pos_i) for pos_i in range(n_position)])
+        sinusoid_table[:, 0::2] = np.sin(sinusoid_table[:, 0::2])  # dim 2i
+        sinusoid_table[:, 1::2] = np.cos(sinusoid_table[:, 1::2])  # dim 2i+1
+
+        return torch.FloatTensor(sinusoid_table).unsqueeze(0)
+
+
 @BACKBONES.register_module()
 class T2T_ViT(BaseBackbone):
 
@@ -231,14 +259,59 @@ class T2T_ViT(BaseBackbone):
                      type='T2TTransformerEncoder',
                      transformerlayers=None,
                      num_encoder_layers=12,
-                     coder_norm_cfg=None,
-                 ),
+                     coder_norm_cfg=None),
+                 drop_rate=0.,
+                 drop_path_rate=0.,
                  init_cfg=None):
         super(T2T_ViT, self).__init__(init_cfg)
 
+        self.tokens_to_token = T2T_module(**t2t_module)
+        num_patches = self.tokens_to_token.num_patches
+        embed_dim = self.tokens_to_token.embed_dim
+
+        self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
+        sinusoid_encoding = build_positional_encoding(
+            dict(type='SinusoidEncoding'))
+        self.pos_embed = nn.Parameter(
+            data=sinusoid_encoding(
+                n_position=num_patches + 1, d_hid=embed_dim),
+            requires_grad=False)
+        self.pos_drop = nn.Dropout(p=drop_rate)
+
+        if drop_path_rate:
+            assert encoder['transformerlayers']['attn_cfg']['dropout_layer'][
+                       'type'] == 'DropPath' and \
+                   encoder['transformerlayers']['ffn_cfgs']['dropout_layer'][
+                       'type'] == 'DropPath'
+            depth = encoder['num_encoder_layers']
+            # stochastic depth decay rule
+            dpr = [x.item() for x in torch.linspace(0, drop_path_rate, depth)]
+            transformerlayers = [
+                copy.deepcopy(encoder['transformerlayers'])
+                for _ in range(depth)
+            ]
+            for i in range(depth):
+                transformerlayers[i]['attn_cfg']['dropout_layer'][
+                    'drop_prob'] = dpr[i]
+            encoder['transformerlayers'] = transformerlayers
+
+        self.encoder = build_transformer_layer_sequence(encoder)
+
+    def forward(self, x):
+        pass
+
 
 if __name__ == '__main__':
-    import torch
-    t2t = T2T_module()
-    imgs = torch.rand(1, 3, 224, 224)
-    print(t2t(imgs).shape)
+    model_cfg = dict(
+        t2t_module=dict(
+            img_size=224,
+            tokens_type='transformer',
+            in_chans=3,
+            embed_dim=768,
+            token_dim=64),
+        encoder=dict(
+            type='T2TTransformerEncoder',
+            transformerlayers=None,
+            num_encoder_layers=12,
+            coder_norm_cfg=None))
+    model = T2T_ViT()
