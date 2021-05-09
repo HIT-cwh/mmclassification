@@ -4,7 +4,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 from mmcv import ConfigDict
-from mmcv.cnn import Linear, build_norm_layer
+from mmcv.cnn import build_norm_layer
 from mmcv.cnn.bricks.registry import (ATTENTION, POSITIONAL_ENCODING,
                                       TRANSFORMER_LAYER,
                                       TRANSFORMER_LAYER_SEQUENCE)
@@ -16,34 +16,32 @@ from mmcv.cnn.bricks.transformer import (BaseTransformerLayer,
                                          build_transformer_layer_sequence)
 from mmcv.runner.base_module import BaseModule, ModuleList
 
-from mmcls.models.backbones.base_backbone import BaseBackbone
-from mmcls.models.builder import BACKBONES
+from ..builder import BACKBONES
+from .base_backbone import BaseBackbone
 
 
 @ATTENTION.register_module()
-class TokenTransformerAttention(BaseModule):
+class T2TModuleAttention(BaseModule):
 
     def __init__(self,
-                 dim,
+                 in_dim,
+                 embed_dims,
                  num_heads=8,
-                 embed_dims=None,
                  qkv_bias=False,
                  qk_scale=None,
-                 attn_dropout_layer=dict(type='DropOut', drop_prob=0.),
-                 proj_dropout_layer=dict(type='DropOut', drop_prob=0.),
+                 attn_drop=0.,
+                 proj_drop=0.,
                  init_cfg=None):
-        super(TokenTransformerAttention, self).__init__(init_cfg)
-        self.num_heads = num_heads
+        super(T2TModuleAttention, self).__init__(init_cfg)
         self.embed_dims = embed_dims
-        head_dim = dim // num_heads
+        self.num_heads = num_heads
+        head_dim = in_dim // num_heads
         self.scale = qk_scale or head_dim**-0.5
 
-        self.qkv = Linear(dim, embed_dims * 3, bias=qkv_bias)
-        self.attn_drop = build_dropout(
-            attn_dropout_layer) if attn_dropout_layer else nn.Identity()
-        self.proj = Linear(embed_dims, embed_dims)
-        self.proj_drop = build_dropout(
-            proj_dropout_layer) if proj_dropout_layer else nn.Identity()
+        self.qkv = nn.Linear(in_dim, embed_dims * 3, bias=qkv_bias)
+        self.attn_drop = nn.Dropout(attn_drop)
+        self.proj = nn.Linear(embed_dims, embed_dims)
+        self.proj_drop = nn.Dropout(proj_drop)
 
     def forward(self, query, key, value, *args, **kwargs):
         assert \
@@ -72,6 +70,62 @@ class TokenTransformerAttention(BaseModule):
         return x
 
 
+@ATTENTION.register_module()
+class T2TBlockAttention(BaseModule):
+
+    def __init__(self,
+                 embed_dims,
+                 num_heads=8,
+                 qkv_bias=False,
+                 qk_scale=None,
+                 attn_drop=0.,
+                 proj_drop=0.,
+                 dropout_layer=dict(type='DropPath', drop_prob=0.),
+                 init_cfg=None):
+        super(T2TBlockAttention, self).__init__(init_cfg)
+        self.embed_dims = embed_dims
+        self.num_heads = num_heads
+        head_dim = embed_dims // num_heads
+
+        self.scale = qk_scale or head_dim**-0.5
+
+        self.qkv = nn.Linear(embed_dims, embed_dims * 3, bias=qkv_bias)
+        self.attn_drop = nn.Dropout(attn_drop)
+        self.proj = nn.Linear(embed_dims, embed_dims)
+        self.proj_drop = nn.Dropout(proj_drop)
+
+        self.dropout_layer = build_dropout(
+            dropout_layer) if dropout_layer else nn.Identity()
+        self.init_cfg = init_cfg
+
+    def forward(self, query, key, value, residual=None, *args, **kwargs):
+        assert \
+            (query is key or torch.equal(query, key)) and \
+            (key is value or torch.equal(key, value)), \
+            'In self-attn, query == key == value should be satistied.'
+
+        if residual is None:
+            residual = query
+
+        B, N, C = query.shape
+        qkv = self.qkv(query).reshape(B, N, 3, self.num_heads,
+                                      C // self.num_heads).permute(
+                                          2, 0, 3, 1, 4)
+        q, k, v = qkv[0], qkv[1], qkv[2]
+
+        attn = (q @ k.transpose(-2, -1)) * self.scale
+        attn = attn.softmax(dim=-1)
+        attn = self.attn_drop(attn)
+
+        out = (attn @ v).transpose(1, 2).reshape(B, N, C)
+        out = self.proj(out)
+        out = self.proj_drop(out)
+
+        # out = out.permute(1, 0, 2)
+
+        return residual + self.dropout_layer(out)
+
+
 @TRANSFORMER_LAYER.register_module()
 class TokenTransformerLayer(BaseTransformerLayer):
 
@@ -92,7 +146,7 @@ class TokenTransformerLayer(BaseTransformerLayer):
         for i in range(num_norms):
             if i == 0:
                 self.norms.append(
-                    build_norm_layer(norm_cfg, attn_cfgs['dim'])[1])
+                    build_norm_layer(norm_cfg, attn_cfgs['in_dim'])[1])
             else:
                 self.norms.append(
                     build_norm_layer(norm_cfg, attn_cfgs['embed_dims'])[1])
@@ -125,11 +179,11 @@ class T2T_module(BaseModule):
             self.soft_split2 = nn.Unfold(
                 kernel_size=(3, 3), stride=(2, 2), padding=(1, 1))
 
-            tokentransformerlayer1 = dict(
+            tokentransformer_layer1 = dict(
                 type='TokenTransformerLayer',
                 attn_cfgs=ConfigDict(
-                    type='TokenTransformerAttention',
-                    dim=in_chans * 7 * 7,
+                    type='T2TModuleAttention',
+                    in_dim=in_chans * 7 * 7,
                     embed_dims=token_dim,
                     num_heads=1),
                 ffn_cfgs=dict(
@@ -139,10 +193,10 @@ class T2T_module(BaseModule):
                     act_cfg=dict(type='GELU'),
                     dropout_layer=dict(type='DropPath', drop_prob=0.)),
                 operation_order=('norm', 'self_attn', 'norm', 'ffn'))
-            self.attention1 = build_transformer_layer(tokentransformerlayer1)
-            tokentransformerlayer2 = copy.deepcopy(tokentransformerlayer1)
-            tokentransformerlayer2['attn_cfgs']['dim'] = token_dim * 3 * 3
-            self.attention2 = build_transformer_layer(tokentransformerlayer2)
+            self.attention1 = build_transformer_layer(tokentransformer_layer1)
+            tokentransformer_layer2 = copy.deepcopy(tokentransformer_layer1)
+            tokentransformer_layer2['attn_cfgs']['in_dim'] = token_dim * 3 * 3
+            self.attention2 = build_transformer_layer(tokentransformer_layer2)
 
             self.project = nn.Linear(token_dim * 3 * 3, embed_dim)
 
@@ -180,10 +234,13 @@ class T2T_module(BaseModule):
 class T2TTransformerEncoderLayer(BaseTransformerLayer):
     """Implements encoder layer in Tokens-to-Token vision transformer."""
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, qkv_bias=False, *args, **kwargs):
         super(T2TTransformerEncoderLayer, self).__init__(*args, **kwargs)
         assert len(self.operation_order) == 4
         assert set(self.operation_order) == set(['self_attn', 'norm', 'ffn'])
+
+        # print(self.attentions[0].attn.in_proj_bias.shape)
+        # self.attentions[0].attn.in_proj_bias = None
 
 
 @TRANSFORMER_LAYER_SEQUENCE.register_module()
@@ -258,7 +315,7 @@ class T2T_ViT(BaseBackbone):
                  encoder=dict(
                      type='T2TTransformerEncoder',
                      transformerlayers=None,
-                     num_encoder_layers=12,
+                     num_layers=12,
                      coder_norm_cfg=None),
                  drop_rate=0.,
                  drop_path_rate=0.,
@@ -279,11 +336,11 @@ class T2T_ViT(BaseBackbone):
         self.pos_drop = nn.Dropout(p=drop_rate)
 
         if drop_path_rate:
-            assert encoder['transformerlayers']['attn_cfg']['dropout_layer'][
+            assert encoder['transformerlayers']['attn_cfgs']['dropout_layer'][
                        'type'] == 'DropPath' and \
                    encoder['transformerlayers']['ffn_cfgs']['dropout_layer'][
                        'type'] == 'DropPath'
-            depth = encoder['num_encoder_layers']
+            depth = encoder['num_layers']
             # stochastic depth decay rule
             dpr = [x.item() for x in torch.linspace(0, drop_path_rate, depth)]
             transformerlayers = [
@@ -291,27 +348,21 @@ class T2T_ViT(BaseBackbone):
                 for _ in range(depth)
             ]
             for i in range(depth):
-                transformerlayers[i]['attn_cfg']['dropout_layer'][
+                transformerlayers[i]['attn_cfgs']['dropout_layer'][
                     'drop_prob'] = dpr[i]
             encoder['transformerlayers'] = transformerlayers
 
         self.encoder = build_transformer_layer_sequence(encoder)
 
     def forward(self, x):
-        pass
+        B = x.shape[0]
+        x = self.tokens_to_token(x)
 
+        cls_tokens = self.cls_token.expand(B, -1, -1)
+        x = torch.cat((cls_tokens, x), dim=1)
+        x = x + self.pos_embed
+        x = self.pos_drop(x)
 
-if __name__ == '__main__':
-    model_cfg = dict(
-        t2t_module=dict(
-            img_size=224,
-            tokens_type='transformer',
-            in_chans=3,
-            embed_dim=768,
-            token_dim=64),
-        encoder=dict(
-            type='T2TTransformerEncoder',
-            transformerlayers=None,
-            num_encoder_layers=12,
-            coder_norm_cfg=None))
-    model = T2T_ViT()
+        x = self.encoder(query=x, key=None, value=None)
+
+        return x[:, 0]
