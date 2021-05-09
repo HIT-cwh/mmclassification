@@ -1,10 +1,10 @@
-# import pytest
-# import torch
-# from mmcv import Config
+import pytest
+import torch
+from mmcv import Config, ConfigDict
 from torch.nn.modules import GroupNorm
 from torch.nn.modules.batchnorm import _BatchNorm
 
-# from mmcls.models.backbones import VGG, VisionTransformer
+from mmcls.models.backbones import T2T_ViT
 
 
 def is_norm(modules):
@@ -25,21 +25,46 @@ def check_norm_state(modules, train_state):
 
 def test_t2t_backbone():
 
-    transformerlayers = dict(
-        type='TokenTransformerLayer',
-        attn_cfgs=[
-            dict(
-                type='TokenTransformerAttention',
-                embed_dims=768,
-                num_heads=12,
-                attn_drop=0.,
-                dropout_layer=dict(type='DropOut', drop_prob=0.1))
-        ],
-        ffn_cfgs=dict(
-            embed_dims=768,
-            feedforward_channels=3072,
-            num_fcs=2,
-            ffn_drop=0.1,
-            act_cfg=dict(type='GELU')),
-        operation_order=('norm', 'self_attn', 'norm', 'ffn'))
-    print(transformerlayers)
+    model_cfg = dict(
+        t2t_module=dict(
+            img_size=224,
+            tokens_type='transformer',
+            in_chans=3,
+            embed_dim=384,
+            token_dim=64),
+        encoder=ConfigDict(
+            type='T2TTransformerEncoder',
+            num_layers=14,
+            transformerlayers=dict(
+                type='T2TTransformerEncoderLayer',
+                attn_cfgs=ConfigDict(
+                    type='T2TBlockAttention',
+                    embed_dims=384,
+                    num_heads=6,
+                    attn_drop=0.,
+                    proj_drop=0.,
+                    dropout_layer=dict(type='DropPath', drop_prob=0.)),
+                ffn_cfgs=dict(
+                    embed_dims=384,
+                    feedforward_channels=3 * 384,
+                    num_fcs=2,
+                    act_cfg=dict(type='GELU'),
+                    dropout_layer=dict(type='DropPath', drop_prob=0.)),
+                operation_order=('norm', 'self_attn', 'norm', 'ffn')),
+            drop_path_rate=0.1))
+    cfg = Config(model_cfg)
+
+    with pytest.raises(TypeError):
+        # pretrained must be a string path
+        model = T2T_ViT(**cfg)
+        model.init_weights(pretrained=0)
+
+    model = T2T_ViT(**cfg)
+    model.init_weights()
+    model.train()
+
+    assert check_norm_state(model.modules(), True)
+
+    imgs = torch.rand(3, 3, 224, 224)
+    feat = model(imgs)
+    assert feat.shape == torch.Size((3, 384))
