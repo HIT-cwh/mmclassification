@@ -124,11 +124,7 @@ def test_image_classifier_vit():
                     type='Kaiming',
                     layer='Conv2d',
                     mode='fan_in',
-                    nonlinearity='linear'),
-                dict(
-                    type='Pretrained',
-                    checkpoint='../checkpoints/vit_base_patch16_224.pth',
-                    prefix='backbone.')
+                    nonlinearity='linear')
             ]),
         neck=None,
         head=dict(
@@ -144,13 +140,6 @@ def test_image_classifier_vit():
     model_cfg = Config(model_cfg)
     img_classifier = ImageClassifier(**model_cfg)
     img_classifier.init_weights()
-
-    # test initializing weights of a sub-module
-    # with the specific part of a pretrained model by using 'prefix'
-    checkpoint = torch.load(
-        '../checkpoints/vit_base_patch16_224.pth', map_location='cpu')
-    assert (checkpoint['state_dict']['backbone.cls_token'] ==
-            img_classifier.state_dict()['backbone.cls_token']).all()
 
     imgs = torch.randn(1, 3, 224, 224)
     label = torch.randint(0, 1000, (1, ))
@@ -180,19 +169,15 @@ def test_image_classifier_t2t():
                         num_heads=6,
                         attn_drop=0.,
                         proj_drop=0.,
-                        dropout_layer=dict(type='DropPath', drop_prob=0.)),
+                        dropout_layer=dict(type='DropPath')),
                     ffn_cfgs=dict(
                         embed_dims=384,
                         feedforward_channels=3 * 384,
                         num_fcs=2,
                         act_cfg=dict(type='GELU'),
-                        dropout_layer=dict(type='DropPath', drop_prob=0.)),
+                        dropout_layer=dict(type='DropPath')),
                     operation_order=('norm', 'self_attn', 'norm', 'ffn')),
-                drop_path_rate=0.1),
-            init_cfg=dict(
-                type='Pretrained',
-                checkpoint='../checkpoints/t2t/t2t_vit_t_14_new.pth',
-                prefix='backbone.')),
+                drop_path_rate=0.1)),
         neck=None,
         head=dict(
             type='LinearClsHead',
@@ -205,13 +190,6 @@ def test_image_classifier_t2t():
     model_cfg = Config(model_cfg)
     img_classifier = ImageClassifier(**model_cfg)
     img_classifier.init_weights()
-
-    # test initializing weights of a sub-module
-    # with the specific part of a pretrained model by using 'prefix'
-    checkpoint = torch.load(
-        '../checkpoints/t2t/t2t_vit_t_14_new.pth', map_location='cpu')
-    assert (checkpoint['state_dict']['backbone.cls_token'] ==
-            img_classifier.state_dict()['backbone.cls_token']).all()
 
     imgs = torch.randn(1, 3, 224, 224)
     label = torch.randint(0, 1000, (1, ))
