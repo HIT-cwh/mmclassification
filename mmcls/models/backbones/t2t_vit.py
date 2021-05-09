@@ -239,9 +239,6 @@ class T2TTransformerEncoderLayer(BaseTransformerLayer):
         assert len(self.operation_order) == 4
         assert set(self.operation_order) == set(['self_attn', 'norm', 'ffn'])
 
-        # print(self.attentions[0].attn.in_proj_bias.shape)
-        # self.attentions[0].attn.in_proj_bias = None
-
 
 @TRANSFORMER_LAYER_SEQUENCE.register_module()
 class T2TTransformerEncoder(TransformerLayerSequence):
