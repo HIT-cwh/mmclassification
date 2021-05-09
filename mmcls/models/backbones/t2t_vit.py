@@ -8,7 +8,7 @@ from mmcv.cnn import build_norm_layer
 from mmcv.cnn.bricks.registry import (ATTENTION, POSITIONAL_ENCODING,
                                       TRANSFORMER_LAYER,
                                       TRANSFORMER_LAYER_SEQUENCE)
-from mmcv.cnn.bricks.transformer import (BaseTransformerLayer,
+from mmcv.cnn.bricks.transformer import (BaseTransformerLayer, DropPath,
                                          TransformerLayerSequence,
                                          build_dropout,
                                          build_positional_encoding,
@@ -254,11 +254,18 @@ class T2TTransformerEncoder(TransformerLayerSequence):
 
     def __init__(
             self,
-            *args,
+            transformerlayers,
+            num_layers,
             coder_norm_cfg=dict(type='LN'),
+            drop_path_rate=0.,
+            *args,
             **kwargs,
     ):
-        super(T2TTransformerEncoder, self).__init__(*args, **kwargs)
+        super(T2TTransformerEncoder, self).__init__(
+            transformerlayers=transformerlayers,
+            num_layers=num_layers,
+            *args,
+            **kwargs)
         if coder_norm_cfg is not None:
             self.coder_norm = build_norm_layer(
                 coder_norm_cfg, self.embed_dims)[1] if self.pre_norm else None
@@ -267,6 +274,20 @@ class T2TTransformerEncoder(TransformerLayerSequence):
                                       f'{self.__class__.__name__},' \
                                       f'Please specify coder_norm_cfg'
             self.coder_norm = None
+
+        self.drop_path_rate = drop_path_rate
+        if drop_path_rate:
+            self.set_droppath_rate()
+
+    def set_droppath_rate(self):
+        dpr = [
+            x.item()
+            for x in torch.linspace(0, self.drop_path_rate, self.num_layers)
+        ]
+        for i, layer in enumerate(self.layers):
+            for module in layer.modules():
+                if isinstance(module, DropPath):
+                    module.drop_prob = dpr[i]
 
     def forward(self, *args, **kwargs):
         """Forward function for `TransformerCoder`.
@@ -316,9 +337,9 @@ class T2T_ViT(BaseBackbone):
                      type='T2TTransformerEncoder',
                      transformerlayers=None,
                      num_layers=12,
-                     coder_norm_cfg=None),
+                     coder_norm_cfg=None,
+                     drop_path_rate=0.),
                  drop_rate=0.,
-                 drop_path_rate=0.,
                  init_cfg=None):
         super(T2T_ViT, self).__init__(init_cfg)
 
@@ -334,23 +355,6 @@ class T2T_ViT(BaseBackbone):
                 n_position=num_patches + 1, d_hid=embed_dim),
             requires_grad=False)
         self.pos_drop = nn.Dropout(p=drop_rate)
-
-        if drop_path_rate:
-            assert encoder['transformerlayers']['attn_cfgs']['dropout_layer'][
-                       'type'] == 'DropPath' and \
-                   encoder['transformerlayers']['ffn_cfgs']['dropout_layer'][
-                       'type'] == 'DropPath'
-            depth = encoder['num_layers']
-            # stochastic depth decay rule
-            dpr = [x.item() for x in torch.linspace(0, drop_path_rate, depth)]
-            transformerlayers = [
-                copy.deepcopy(encoder['transformerlayers'])
-                for _ in range(depth)
-            ]
-            for i in range(depth):
-                transformerlayers[i]['attn_cfgs']['dropout_layer'][
-                    'drop_prob'] = dpr[i]
-            encoder['transformerlayers'] = transformerlayers
 
         self.encoder = build_transformer_layer_sequence(encoder)
 
