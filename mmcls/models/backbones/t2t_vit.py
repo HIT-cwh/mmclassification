@@ -22,6 +22,21 @@ from .base_backbone import BaseBackbone
 
 @ATTENTION.register_module()
 class T2TModuleAttention(BaseModule):
+    """MultiHead self-attention in Tokens-to-Token module.
+
+    Args:
+        in_dim (int): Dimension of input tokens.
+        embed_dims (int): Embedding dimension
+        num_heads (int): Parallel attention heads. Same as
+            `nn.MultiheadAttention`.
+        qkv_bias (bool): Add bias as qkv Linear module parameter.
+            Default: False.
+        qk_scale (float, optional): scale of the dot products. Default: None.
+        attn_drop (float): A Dropout layer on attn output weights.
+            Default: 0.0.
+        proj_drop (float): A Dropout layer on out. Default: 0.0.
+        init_cfg (dict, optional): Initialization config dict.
+    """
 
     def __init__(self,
                  in_dim,
@@ -72,6 +87,21 @@ class T2TModuleAttention(BaseModule):
 
 @ATTENTION.register_module()
 class T2TBlockAttention(BaseModule):
+    """MultiHead self-attention in T2T-ViT backbone.
+
+    Args:
+        embed_dims (int): Embedding dimension
+        num_heads (int): Parallel attention heads. Same as
+            `nn.MultiheadAttention`.
+        qkv_bias (bool): Add bias as qkv Linear module parameter.
+            Default: False.
+        qk_scale (float, optional): scale of the dot products. Default: None.
+        attn_drop (float): A Dropout layer on attn output weights.
+            Default: 0.0.
+        proj_drop (float): A Dropout layer on out. Default: 0.0.
+        dropout_layer (dict): The dropout_layer used when adding the shortcut.
+        init_cfg (dict, optional): Initialization config dict.
+    """
 
     def __init__(self,
                  embed_dims,
@@ -121,35 +151,26 @@ class T2TBlockAttention(BaseModule):
         out = self.proj(out)
         out = self.proj_drop(out)
 
-        # out = out.permute(1, 0, 2)
-
         return residual + self.dropout_layer(out)
 
 
 @TRANSFORMER_LAYER.register_module()
 class TokenTransformerLayer(BaseTransformerLayer):
+    """Tokens-to-token Transformer Layer."""
 
-    def __init__(self,
-                 attn_cfgs=None,
-                 operation_order=None,
-                 norm_cfg=dict(type='LN'),
-                 *args,
-                 **kwargs):
-        super(TokenTransformerLayer, self).__init__(
-            attn_cfgs=attn_cfgs,
-            operation_order=operation_order,
-            *args,
-            **kwargs)
+    def __init__(self, norm_cfg=dict(type='LN'), *args, **kwargs):
+        super(TokenTransformerLayer, self).__init__(*args, **kwargs)
 
         self.norms = ModuleList()
-        num_norms = operation_order.count('norm')
+        num_norms = self.operation_order.count('norm')
         for i in range(num_norms):
             if i == 0:
                 self.norms.append(
-                    build_norm_layer(norm_cfg, attn_cfgs['in_dim'])[1])
+                    build_norm_layer(norm_cfg, self.attn_cfgs['in_dim'])[1])
             else:
                 self.norms.append(
-                    build_norm_layer(norm_cfg, attn_cfgs['embed_dims'])[1])
+                    build_norm_layer(norm_cfg,
+                                     self.attn_cfgs['embed_dims'])[1])
 
     def forward(self, *args, **kwargs):
         x = super(TokenTransformerLayer, self).forward(*args, **kwargs)
@@ -157,7 +178,23 @@ class TokenTransformerLayer(BaseTransformerLayer):
 
 
 class T2T_module(BaseModule):
-    """Tokens-to-Token encoding module."""
+    """Tokens-to-Token module.
+
+    A layer-wise “Tokens-to-Token module” (T2T_module) to model the local
+    structure information of images and reduce the length of tokens
+    progressively.
+
+    Args:
+        img_size (int): Input image size
+        tokens_type (str): Transformer type used in T2T_module,
+            transformer or performer.
+        in_chans (int): Number of input channels
+        embed_dim (int): Embedding dimension
+        token_dim (int): Tokens dimension in T2TModuleAttention.
+            To overcome the limitations, in T2T module, the channel dimension
+            of T2T layer is set small (32 or 64) to reduce MACs
+        init_cfg (dict, optional): Initialization config dict.
+    """
 
     def __init__(self,
                  img_size=224,
@@ -232,9 +269,9 @@ class T2T_module(BaseModule):
 
 @TRANSFORMER_LAYER.register_module()
 class T2TTransformerEncoderLayer(BaseTransformerLayer):
-    """Implements encoder layer in Tokens-to-Token vision transformer."""
+    """Implements transformer layer in T2T-ViT backbone."""
 
-    def __init__(self, qkv_bias=False, *args, **kwargs):
+    def __init__(self, *args, **kwargs):
         super(T2TTransformerEncoderLayer, self).__init__(*args, **kwargs)
         assert len(self.operation_order) == 4
         assert set(self.operation_order) == set(['self_attn', 'norm', 'ffn'])
@@ -242,27 +279,24 @@ class T2TTransformerEncoderLayer(BaseTransformerLayer):
 
 @TRANSFORMER_LAYER_SEQUENCE.register_module()
 class T2TTransformerEncoder(TransformerLayerSequence):
-    """TransformerEncoder of Tokens-to-Token vision transformer.
+    """Transformer layers of T2T-ViT backbone.
 
     Args:
         coder_norm_cfg (dict): Config of last normalization layer. Default：
             `LN`. Only used when `self.pre_norm` is `True`
+        drop_path_rate (float): Drop path probability of a drop path layer.
+            The drop path probabilities in encoder layers are evenly spaced
+            from 0 to drop_path_rate, inclusive. Default: 0.0
     """
 
     def __init__(
             self,
-            transformerlayers,
-            num_layers,
             coder_norm_cfg=dict(type='LN'),
             drop_path_rate=0.,
             *args,
             **kwargs,
     ):
-        super(T2TTransformerEncoder, self).__init__(
-            transformerlayers=transformerlayers,
-            num_layers=num_layers,
-            *args,
-            **kwargs)
+        super(T2TTransformerEncoder, self).__init__(*args, **kwargs)
         if coder_norm_cfg is not None:
             self.coder_norm = build_norm_layer(
                 coder_norm_cfg, self.embed_dims)[1] if self.pre_norm else None
@@ -322,6 +356,17 @@ class SinusoidEncoding(object):
 
 @BACKBONES.register_module()
 class T2T_ViT(BaseBackbone):
+    """Tokens-to-Token Vision Transformers (T2T-ViT)
+
+    A PyTorch impl of : `Tokens-to-Token ViT: Training Vision Transformers
+    from Scratch on ImageNet` - https://arxiv.org/abs/2101.11986
+
+    Args:
+        t2t_module (dict): Config of Tokens-to-Token module
+        encoder (dict): Config of T2T-ViT backbone
+        drop_rate (float): Probability of an element to be zeroed. Default 0.0.
+        init_cfg (dict, optional): Initialization config dict.
+    """
 
     def __init__(self,
                  t2t_module=dict(
