@@ -158,19 +158,23 @@ class T2TBlockAttention(BaseModule):
 class TokenTransformerLayer(BaseTransformerLayer):
     """Tokens-to-token Transformer Layer."""
 
-    def __init__(self, norm_cfg=dict(type='LN'), *args, **kwargs):
-        super(TokenTransformerLayer, self).__init__(*args, **kwargs)
+    def __init__(self,
+                 norm_cfg=dict(type='LN'),
+                 attn_cfgs=None,
+                 *args,
+                 **kwargs):
+        super(TokenTransformerLayer, self).__init__(
+            attn_cfgs=attn_cfgs, *args, **kwargs)
 
         self.norms = ModuleList()
         num_norms = self.operation_order.count('norm')
         for i in range(num_norms):
             if i == 0:
                 self.norms.append(
-                    build_norm_layer(norm_cfg, self.attn_cfgs['in_dim'])[1])
+                    build_norm_layer(norm_cfg, attn_cfgs['in_dim'])[1])
             else:
                 self.norms.append(
-                    build_norm_layer(norm_cfg,
-                                     self.attn_cfgs['embed_dims'])[1])
+                    build_norm_layer(norm_cfg, attn_cfgs['embed_dims'])[1])
 
     def forward(self, *args, **kwargs):
         x = super(TokenTransformerLayer, self).forward(*args, **kwargs)
