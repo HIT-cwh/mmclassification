@@ -1,4 +1,4 @@
-# accuracy_top-1 : 81.39 accuracy_top-5 : 95.73
+# accuracy_top-1 : 81.69 accuracy_top-5 : 95.85
 _base_ = [
     '../_base_/models/t2t_vit_t_14.py',
     '../_base_/datasets/imagenet_bs64_pil_resize.py',
