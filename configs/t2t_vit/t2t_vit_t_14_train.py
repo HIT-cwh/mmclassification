@@ -34,7 +34,7 @@ model = dict(
             drop_path_rate=0.1)),
     neck=None,
     head=dict(
-        type='LinearClsHead',
+        type='T2THead',
         num_classes=1000,
         in_channels=384,
         loss=dict(type='LabelSmoothLoss', label_smooth_val=0.1),
