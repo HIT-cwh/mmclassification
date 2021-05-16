@@ -43,13 +43,13 @@ def test_t2t_backbone():
                     num_heads=6,
                     attn_drop=0.,
                     proj_drop=0.,
-                    dropout_layer=dict(type='DropPath', drop_prob=0.)),
+                    dropout_layer=dict(type='DropPath')),
                 ffn_cfgs=dict(
                     embed_dims=384,
                     feedforward_channels=3 * 384,
                     num_fcs=2,
                     act_cfg=dict(type='GELU'),
-                    dropout_layer=dict(type='DropPath', drop_prob=0.)),
+                    dropout_layer=dict(type='DropPath')),
                 operation_order=('norm', 'self_attn', 'norm', 'ffn')),
             drop_path_rate=0.1))
     cfg = Config(model_cfg)
