@@ -1,5 +1,5 @@
 import torch
-from mmcv import Config, ConfigDict
+from mmcv import Config
 
 from mmcls.models.classifiers import ImageClassifier
 
@@ -107,7 +107,8 @@ def test_image_classifier_vit():
                             embed_dims=768,
                             num_heads=12,
                             attn_drop=0.,
-                            dropout_layer=dict(type='DropOut', drop_prob=0.1))
+                            proj_drop=0.1,
+                            batch_first=True)
                     ],
                     ffn_cfgs=dict(
                         embed_dims=768,
@@ -115,7 +116,8 @@ def test_image_classifier_vit():
                         num_fcs=2,
                         ffn_drop=0.1,
                         act_cfg=dict(type='GELU')),
-                    operation_order=('norm', 'self_attn', 'norm', 'ffn')),
+                    operation_order=('norm', 'self_attn', 'norm', 'ffn'),
+                    batch_first=True),
                 init_cfg=[
                     dict(type='Xavier', layer='Linear', distribution='normal')
                 ]),
@@ -124,7 +126,11 @@ def test_image_classifier_vit():
                     type='Kaiming',
                     layer='Conv2d',
                     mode='fan_in',
-                    nonlinearity='linear')
+                    nonlinearity='linear'),
+                dict(
+                    type='Pretrained',
+                    checkpoint='../checkpoints/vit/vit_base_patch16_224.pth',
+                    prefix='backbone.')
             ]),
         neck=None,
         head=dict(
@@ -141,55 +147,12 @@ def test_image_classifier_vit():
     img_classifier = ImageClassifier(**model_cfg)
     img_classifier.init_weights()
 
-    imgs = torch.randn(1, 3, 224, 224)
-    label = torch.randint(0, 1000, (1, ))
-
-    losses = img_classifier.forward_train(imgs, label)
-    assert losses['loss'].item() > 0
-
-
-def test_image_classifier_t2t():
-    model_cfg = dict(
-        backbone=dict(
-            type='T2T_ViT',
-            t2t_module=dict(
-                img_size=224,
-                tokens_type='transformer',
-                in_chans=3,
-                embed_dim=384,
-                token_dim=64),
-            encoder=ConfigDict(
-                type='T2TTransformerEncoder',
-                num_layers=14,
-                transformerlayers=dict(
-                    type='T2TTransformerEncoderLayer',
-                    attn_cfgs=ConfigDict(
-                        type='T2TBlockAttention',
-                        embed_dims=384,
-                        num_heads=6,
-                        attn_drop=0.,
-                        proj_drop=0.,
-                        dropout_layer=dict(type='DropPath')),
-                    ffn_cfgs=dict(
-                        embed_dims=384,
-                        feedforward_channels=3 * 384,
-                        num_fcs=2,
-                        act_cfg=dict(type='GELU'),
-                        dropout_layer=dict(type='DropPath')),
-                    operation_order=('norm', 'self_attn', 'norm', 'ffn')),
-                drop_path_rate=0.1)),
-        neck=None,
-        head=dict(
-            type='LinearClsHead',
-            num_classes=1000,
-            in_channels=384,
-            loss=dict(type='LabelSmoothLoss', label_smooth_val=0.1),
-            topk=(1, 5),
-        ),
-        train_cfg=dict(mixup=dict(alpha=0.2, num_classes=1000)))
-    model_cfg = Config(model_cfg)
-    img_classifier = ImageClassifier(**model_cfg)
-    img_classifier.init_weights()
+    # test initializing weights of a sub-module
+    # with the specific part of a pretrained model by using 'prefix'
+    checkpoint = torch.load(
+        '../checkpoints/vit/vit_base_patch16_224.pth', map_location='cpu')
+    assert (checkpoint['state_dict']['backbone.cls_token'] ==
+            img_classifier.state_dict()['backbone.cls_token']).all()
 
     imgs = torch.randn(1, 3, 224, 224)
     label = torch.randint(0, 1000, (1, ))
