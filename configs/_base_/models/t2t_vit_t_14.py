@@ -29,7 +29,8 @@ model = dict(
                     num_fcs=2,
                     act_cfg=dict(type='GELU'),
                     dropout_layer=dict(type='DropPath')),
-                operation_order=('norm', 'self_attn', 'norm', 'ffn')),
+                operation_order=('norm', 'self_attn', 'norm', 'ffn'),
+                batch_first=True),
             drop_path_rate=0.1)),
     neck=None,
     head=dict(
