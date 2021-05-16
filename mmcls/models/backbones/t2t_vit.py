@@ -36,6 +36,10 @@ class T2TModuleAttention(BaseModule):
             Default: 0.0.
         proj_drop (float): A Dropout layer on out. Default: 0.0.
         init_cfg (dict, optional): Initialization config dict.
+        batch_first (bool): Key, Query and Value are shape of
+            (batch, n, embed_dim) or (n, batch, embed_dim). Add batch_first
+            to synchronize with MultiheadAttention in transformer.py mmcv.
+            batch_first should be True in T2TModuleAttention.
     """
 
     def __init__(self,
@@ -46,8 +50,12 @@ class T2TModuleAttention(BaseModule):
                  qk_scale=None,
                  attn_drop=0.,
                  proj_drop=0.,
-                 init_cfg=None):
+                 init_cfg=None,
+                 batch_first=True):
         super(T2TModuleAttention, self).__init__(init_cfg)
+        assert batch_first is True, \
+            'batch_first should be True when using T2TModuleAttention'
+        self.batch_first = batch_first
         self.embed_dims = embed_dims
         self.num_heads = num_heads
         head_dim = in_dim // num_heads
@@ -101,6 +109,10 @@ class T2TBlockAttention(BaseModule):
         proj_drop (float): A Dropout layer on out. Default: 0.0.
         dropout_layer (dict): The dropout_layer used when adding the shortcut.
         init_cfg (dict, optional): Initialization config dict.
+        batch_first (bool): Key, Query and Value are shape of
+            (batch, n, embed_dim) or (n, batch, embed_dim). Add batch_first
+            to synchronize with MultiheadAttention in transformer.py mmcv.
+            batch_first should be True in T2TBlockAttention.
     """
 
     def __init__(self,
@@ -111,8 +123,12 @@ class T2TBlockAttention(BaseModule):
                  attn_drop=0.,
                  proj_drop=0.,
                  dropout_layer=dict(type='DropPath', drop_prob=0.),
-                 init_cfg=None):
+                 init_cfg=None,
+                 batch_first=True):
         super(T2TBlockAttention, self).__init__(init_cfg)
+        assert batch_first is True, \
+            'batch_first should be True when using T2TBlockAttention'
+        self.batch_first = batch_first
         self.embed_dims = embed_dims
         self.num_heads = num_heads
         head_dim = embed_dims // num_heads
