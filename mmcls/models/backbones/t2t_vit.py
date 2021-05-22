@@ -246,6 +246,7 @@ class T2T_module(BaseModule):
                     embed_dims=token_dim,
                     num_heads=1),
                 ffn_cfgs=dict(
+                    type='FFN',
                     embed_dims=token_dim,
                     feedforward_channels=token_dim,
                     num_fcs=2,

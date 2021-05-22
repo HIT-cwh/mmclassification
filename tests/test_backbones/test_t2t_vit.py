@@ -45,6 +45,7 @@ def test_t2t_backbone():
                     proj_drop=0.,
                     dropout_layer=dict(type='DropPath')),
                 ffn_cfgs=dict(
+                    type='FFN',
                     embed_dims=384,
                     feedforward_channels=3 * 384,
                     num_fcs=2,
