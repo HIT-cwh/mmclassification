@@ -1,5 +1,7 @@
+import warnings
+
 from ..builder import CLASSIFIERS, build_backbone, build_head, build_neck
-from ..utils import BatchCutMixLayer, BatchMixupLayer
+from ..utils import BatchCutMixLayer, BatchMixupLayer, CutMixUp
 from .base import BaseClassifier
 
 
@@ -22,31 +24,25 @@ class ImageClassifier(BaseClassifier):
         if head is not None:
             self.head = build_head(head)
 
-        self.mixup, self.cutmix = None, None
+        self.cutmixup, self.mixup, self.cutmix = None, None, None
         if train_cfg is not None:
-            mixup_cfg = train_cfg.get('mixup', None)
-            cutmix_cfg = train_cfg.get('cutmix', None)
-            assert mixup_cfg is None or cutmix_cfg is None, \
-                'Mixup and CutMix can not be set simultaneously.'
-            if mixup_cfg is not None:
-                self.mixup = BatchMixupLayer(**mixup_cfg)
-            if cutmix_cfg is not None:
-                self.cutmix = BatchCutMixLayer(**cutmix_cfg)
-
-        # self.init_weights(pretrained=pretrained)
-
-    def init_weights(self, pretrained=None):
-        super(ImageClassifier, self).init_weights(pretrained)
-        self.backbone.init_weights(pretrained=pretrained)
-
-    # if self.with_neck:
-    #     if isinstance(self.neck, nn.Sequential):
-    #         for m in self.neck:
-    #             m.init_weights()
-    #     else:
-    #         self.neck.init_weights()
-    # if self.with_head:
-    #     self.head.init_weights()
+            cutmixup_cfg = train_cfg.get('cutmixup', None)
+            if cutmixup_cfg is not None:
+                self.cutmixup = CutMixUp(**cutmixup_cfg)
+            else:
+                mixup_cfg = train_cfg.get('mixup', None)
+                cutmix_cfg = train_cfg.get('cutmix', None)
+                assert mixup_cfg is None or cutmix_cfg is None, \
+                    'If mixup and cutmix are set simultaneously,' \
+                    'use cutmixup instead.'
+                if mixup_cfg is not None:
+                    warnings.warn('The mixup attribute will be deprecated.'
+                                  'Please use cutmixup instead.')
+                    self.mixup = BatchMixupLayer(**mixup_cfg)
+                if cutmix_cfg is not None:
+                    warnings.warn('The cutmix attribute will be deprecated.'
+                                  'Please use cutmixup instead.')
+                    self.cutmix = BatchCutMixLayer(**cutmix_cfg)
 
     def extract_feat(self, img):
         """Directly extract features from the backbone + neck."""
@@ -68,11 +64,14 @@ class ImageClassifier(BaseClassifier):
         Returns:
             dict[str, Tensor]: a dictionary of loss components
         """
-        if self.mixup is not None:
+        if self.cutmixup is not None:
+            img, gt_label = self.cutmixup(img, gt_label)
+        elif self.mixup is not None:
             img, gt_label = self.mixup(img, gt_label)
-
-        if self.cutmix is not None:
+        elif self.cutmix is not None:
             img, gt_label = self.cutmix(img, gt_label)
+        else:
+            pass
 
         x = self.extract_feat(img)
 
