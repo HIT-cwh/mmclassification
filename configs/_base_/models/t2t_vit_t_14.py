@@ -1,5 +1,3 @@
-from mmcv import ConfigDict
-
 # model settings
 model = dict(
     type='ImageClassifier',
@@ -11,12 +9,12 @@ model = dict(
             in_chans=3,
             embed_dim=384,
             token_dim=64),
-        encoder=ConfigDict(
+        encoder=dict(
             type='T2TTransformerEncoder',
             num_layers=14,
             transformerlayers=dict(
                 type='T2TTransformerEncoderLayer',
-                attn_cfgs=ConfigDict(
+                attn_cfgs=dict(
                     type='T2TBlockAttention',
                     embed_dims=384,
                     num_heads=6,
