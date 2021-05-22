@@ -6,8 +6,8 @@ import cv2
 import mmcv
 import torch
 import torch.distributed as dist
-import torch.nn as nn
 from mmcv import color_val
+from mmcv.runner.base_module import BaseModule
 from mmcv.utils import print_log
 
 # TODO import `auto_fp16` from mmcv and delete them from mmcls
@@ -19,11 +19,11 @@ except ImportError:
     from mmcls.core import auto_fp16
 
 
-class BaseClassifier(nn.Module, metaclass=ABCMeta):
+class BaseClassifier(BaseModule, metaclass=ABCMeta):
     """Base class for classifiers."""
 
-    def __init__(self):
-        super(BaseClassifier, self).__init__()
+    def __init__(self, init_cfg=None):
+        super(BaseClassifier, self).__init__(init_cfg=init_cfg)
         self.fp16_enabled = False
 
     @property
@@ -58,6 +58,7 @@ class BaseClassifier(nn.Module, metaclass=ABCMeta):
         pass
 
     def init_weights(self, pretrained=None):
+        super(BaseClassifier, self).init_weights()
         if pretrained is not None:
             print_log(f'load model from: {pretrained}', logger='root')
 
@@ -130,13 +131,11 @@ class BaseClassifier(nn.Module, metaclass=ABCMeta):
         hook. Note that in some complicated cases or models, the whole process
         including back propagation and optimizer updating are also defined in
         this method, such as GAN.
-
         Args:
             data (dict): The output of dataloader.
             optimizer (:obj:`torch.optim.Optimizer` | dict): The optimizer of
                 runner is passed to ``train_step()``. This argument is unused
                 and reserved.
-
         Returns:
             dict: It should contain at least 3 keys: ``loss``, ``log_vars``,
                 ``num_samples``.
@@ -196,7 +195,6 @@ class BaseClassifier(nn.Module, metaclass=ABCMeta):
                 Default: 0.
             out_file (str or None): The filename to write the image.
                 Default: None.
-
         Returns:
             img (Tensor): Only if not `show` or `out_file`
         """

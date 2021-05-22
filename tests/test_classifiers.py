@@ -202,22 +202,20 @@ def test_image_classifier_vit():
                     type='Kaiming',
                     layer='Conv2d',
                     mode='fan_in',
-                    nonlinearity='linear'),
-                dict(
-                    type='Pretrained',
-                    checkpoint='../checkpoints/vit/vit_base_patch16_224.pth',
-                    prefix='backbone.')
+                    nonlinearity='linear')
             ]),
         neck=None,
         head=dict(
             type='VisionTransformerClsHead',
             num_classes=1000,
             in_channels=768,
-            hidden_dim=3072,
             loss=dict(type='LabelSmoothLoss', label_smooth_val=0.1),
             topk=(1, 5),
         ),
-        train_cfg=dict(mixup=dict(alpha=0.2, num_classes=1000)))
+        train_cfg=dict(mixup=dict(alpha=0.2, num_classes=1000)),
+        init_cfg=dict(
+            type='Pretrained',
+            checkpoint='../checkpoints/vit/vit_base_patch16_224.pth'))
 
     model_cfg = Config(model_cfg)
     img_classifier = ImageClassifier(**model_cfg)

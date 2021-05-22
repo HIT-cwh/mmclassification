@@ -1,24 +1,24 @@
 import torch
 import torch.nn as nn
+from mmcv.runner.base_module import BaseModule
 
 from ..builder import NECKS
 
 
 @NECKS.register_module()
-class GlobalAveragePooling(nn.Module):
+class GlobalAveragePooling(BaseModule):
     """Global Average Pooling neck.
 
     Note that we use `view` to remove extra channel after pooling. We do not
     use `squeeze` as it will also remove the batch dimension when the tensor
     has a batch dimension of size 1, which can lead to unexpected errors.
-
     Args:
         dim (int): Dimensions of each sample channel, can be one of {1, 2, 3}.
             Default: 2
     """
 
-    def __init__(self, dim=2):
-        super(GlobalAveragePooling, self).__init__()
+    def __init__(self, dim=2, init_cfg=None):
+        super(GlobalAveragePooling, self).__init__(init_cfg=init_cfg)
         assert dim in [1, 2, 3], 'GlobalAveragePooling dim only support ' \
             f'{1, 2, 3}, get {dim} instead.'
         if dim == 1:
