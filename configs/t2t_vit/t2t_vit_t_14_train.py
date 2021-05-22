@@ -1,5 +1,3 @@
-from mmcv import ConfigDict
-
 # model settings
 model = dict(
     type='ImageClassifier',
@@ -11,12 +9,12 @@ model = dict(
             in_chans=3,
             embed_dim=384,
             token_dim=64),
-        encoder=ConfigDict(
+        encoder=dict(
             type='T2TTransformerEncoder',
             num_layers=14,
             transformerlayers=dict(
                 type='T2TTransformerEncoderLayer',
-                attn_cfgs=ConfigDict(
+                attn_cfgs=dict(
                     type='T2TBlockAttention',
                     embed_dims=384,
                     num_heads=6,
@@ -24,6 +22,7 @@ model = dict(
                     proj_drop=0.,
                     dropout_layer=dict(type='DropPath')),
                 ffn_cfgs=dict(
+                    type='FFN',
                     embed_dims=384,
                     feedforward_channels=3 * 384,
                     num_fcs=2,
@@ -148,10 +147,18 @@ dataset_type = 'ImageNet'
 img_norm_cfg = dict(
     mean=[123.675, 116.28, 103.53], std=[58.395, 57.12, 57.375], to_rgb=True)
 train_pipeline = [
-    dict(type='LoadImageFromFile'),
+    dict(
+        type='LoadImageFromFile',
+        file_client_args=dict(
+            backend='memcached',
+            server_list_cfg='/mnt/lustre/share/memcached_client'
+            '/server_list.conf',
+            client_cfg='/mnt/lustre/share/memcached_client/client.conf',
+            sys_path='/mnt/lustre/share/pymc/py3')),
     dict(type='RandomResizedCrop', size=224, backend='pillow'),
     dict(type='RandomFlip', flip_prob=0.5, direction='horizontal'),
     dict(type='AutoAugment', policies=policies),
+    dict(type='RandomErasing', max_area_ratio=1 / 3),
     dict(type='Normalize', **img_norm_cfg),
     dict(type='ImageToTensor', keys=['img']),
     dict(type='ToTensor', keys=['gt_label']),
@@ -171,7 +178,7 @@ test_pipeline = [
 ]
 data = dict(
     samples_per_gpu=128,
-    workers_per_gpu=8,
+    workers_per_gpu=4,
     train=dict(
         type=dataset_type,
         data_prefix='data/imagenet/train',
@@ -191,9 +198,12 @@ evaluation = dict(interval=1, metric='accuracy')
 
 # optimizer
 optimizer = dict(type='AdamW', lr=0.001, weight_decay=0.05)
+optimizer_config = dict(grad_clip=None)
 
 paramwise_cfg = dict(custom_keys={'.backbone.cls_token': dict(decay_mult=0.0)})
 # learning policy
+# FIXME: lr in the first 300 epochs conforms to the CosineAnnealing and
+#  the lr in the last 10 epoch equals to min_lr
 lr_config = dict(
     policy='CosineAnnealing',
     min_lr=1e-5,
@@ -201,8 +211,6 @@ lr_config = dict(
     warmup='linear',
     warmup_iters=5,
     warmup_ratio=1e-3)
-# FIXME: lr in the first 300 epochs conforms to the CosineAnnealing and
-#  the lr in the last 10 epoch equals to min_lr
 runner = dict(type='EpochBasedRunner', max_epochs=310)
 
 # checkpoint saving
