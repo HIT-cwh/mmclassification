@@ -199,6 +199,7 @@ evaluation = dict(interval=1, metric='accuracy')
 # optimizer
 optimizer = dict(type='AdamW', lr=0.001, weight_decay=0.05)
 optimizer_config = dict(grad_clip=None)
+fp16 = dict()
 
 paramwise_cfg = dict(custom_keys={'.backbone.cls_token': dict(decay_mult=0.0)})
 # learning policy
