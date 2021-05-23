@@ -23,8 +23,8 @@ from .base_backbone import BaseBackbone
 
 
 @ATTENTION.register_module()
-class T2TModuleAttention(BaseModule):
-    """MultiHead self-attention in Tokens-to-Token module.
+class TokenTransformerAttention(BaseModule):
+    """MultiHead self-attention in T2T Transformer.
 
     Args:
         in_dim (int): Dimension of input tokens.
@@ -47,21 +47,23 @@ class T2TModuleAttention(BaseModule):
     def __init__(self,
                  in_dim,
                  embed_dims,
-                 num_heads=8,
+                 num_heads=1,
                  qkv_bias=False,
                  qk_scale=None,
                  attn_drop=0.,
                  proj_drop=0.,
                  init_cfg=None,
                  batch_first=True):
-        super(T2TModuleAttention, self).__init__(init_cfg)
+        super(TokenTransformerAttention, self).__init__(init_cfg)
         assert batch_first is True, \
             'batch_first should be True when using T2TModuleAttention'
         self.batch_first = batch_first
+        assert embed_dims % num_heads == 0, \
+            'embed_dims should be divisible by num_heads.'
         self.embed_dims = embed_dims
         self.num_heads = num_heads
-        head_dim = in_dim // num_heads
-        self.scale = qk_scale or head_dim**-0.5
+        self.head_dims = embed_dims / num_heads
+        self.scale = qk_scale or (in_dim // num_heads)**-0.5
 
         self.qkv = nn.Linear(in_dim, embed_dims * 3, bias=qkv_bias)
         self.attn_drop = nn.Dropout(attn_drop)
@@ -76,7 +78,7 @@ class T2TModuleAttention(BaseModule):
         B, N, C = query.shape
 
         qkv = self.qkv(query).reshape(B, N, 3, self.num_heads,
-                                      self.embed_dims).permute(2, 0, 3, 1, 4)
+                                      self.head_dims).permute(2, 0, 3, 1, 4)
         q, k, v = qkv[0], qkv[1], qkv[2]
 
         attn = (q @ k.transpose(-2, -1)) * self.scale
@@ -131,11 +133,13 @@ class T2TBlockAttention(BaseModule):
         assert batch_first is True, \
             'batch_first should be True when using T2TBlockAttention'
         self.batch_first = batch_first
+        assert embed_dims % num_heads == 0, \
+            'embed_dims should be divisible by num_heads.'
         self.embed_dims = embed_dims
         self.num_heads = num_heads
-        head_dim = embed_dims // num_heads
+        self.head_dims = embed_dims // num_heads
 
-        self.scale = qk_scale or head_dim**-0.5
+        self.scale = qk_scale or self.head_dims**-0.5
 
         self.qkv = nn.Linear(embed_dims, embed_dims * 3, bias=qkv_bias)
         self.attn_drop = nn.Dropout(attn_drop)
@@ -157,8 +161,7 @@ class T2TBlockAttention(BaseModule):
 
         B, N, C = query.shape
         qkv = self.qkv(query).reshape(B, N, 3, self.num_heads,
-                                      C // self.num_heads).permute(
-                                          2, 0, 3, 1, 4)
+                                      self.head_dims).permute(2, 0, 3, 1, 4)
         q, k, v = qkv[0], qkv[1], qkv[2]
 
         attn = (q @ k.transpose(-2, -1)) * self.scale
@@ -174,7 +177,7 @@ class T2TBlockAttention(BaseModule):
 
 @TRANSFORMER_LAYER.register_module()
 class TokenTransformerLayer(BaseTransformerLayer):
-    """Tokens-to-token Transformer Layer."""
+    """Take the standard Transformer as T2T Transformer."""
 
     def __init__(self,
                  norm_cfg=dict(type='LN'),
@@ -197,6 +200,92 @@ class TokenTransformerLayer(BaseTransformerLayer):
     def forward(self, *args, **kwargs):
         x = super(TokenTransformerLayer, self).forward(*args, **kwargs)
         return x
+
+
+@ATTENTION.register_module()
+class TokenPerformerAttention(BaseModule):
+
+    def __init__(self,
+                 in_dim,
+                 embed_dims,
+                 num_heads=1,
+                 kernel_ratio=0.5,
+                 proj_drop=0.1,
+                 init_cfg=None):
+        super(TokenPerformerAttention, self).__init__(init_cfg=init_cfg)
+        assert embed_dims % num_heads == 0, \
+            'embed_dims should be divisible by num_heads.'
+        self.embed_dims = embed_dims
+        self.num_heads = num_heads
+        self.head_dims = embed_dims // num_heads
+
+        self.qkv = nn.Linear(in_dim, embed_dims * 3)
+        self.proj = nn.Linear(self.embed_dims, self.embed_dims)
+        self.proj_drop = nn.Dropout(proj_drop)
+        self.epsilon = 1e-8  # for stable in division
+
+        self.m = int(self.emb * kernel_ratio)
+        self.w = torch.randn(self.m, self.emb)
+        self.w = nn.Parameter(
+            nn.init.orthogonal_(self.w) * math.sqrt(self.m),
+            requires_grad=False)
+
+    def performer_exp(self, x):
+        # part of the function is borrow from
+        # https://github.com/lucidrains/performer-pytorch
+        # and Simo Ryu (https://github.com/cloneofsimo)
+        # ==== positive random features for gaussian kernels ====
+        # x = (B, T, hs)
+        # w = (m, hs)
+        # return : x : B, T, m
+        # SM(x, y) = E_w[exp(w^T x - |x|/2) exp(w^T y - |y|/2)]
+        # therefore return exp(w^Tx - |x|/2)/sqrt(m)
+        xd = ((x * x).sum(dim=-1, keepdim=True)).repeat(1, 1, self.m) / 2
+        wtx = torch.einsum('bti,mi->btm', x.float(), self.w)
+
+        return torch.exp(wtx - xd) / math.sqrt(self.m)
+
+    def forward(self, x):
+        q, k, v = torch.split(self.qkv(x), self.emb, dim=-1)
+
+        # (B, T, m), (B, T, m)
+        kp, qp = self.performer_exp(k), self.performer_exp(q)
+        D = torch.einsum('bti,bi->bt', qp, kp.sum(dim=1)).unsqueeze(
+            dim=2)  # (B, T, m) * (B, m) -> (B, T, 1)
+        kptv = torch.einsum('bin,bim->bnm', v.float(), kp)  # (B, emb, m)
+        y = torch.einsum('bti,bni->btn', qp, kptv) / \
+            (D.repeat(1, 1, self.emb) + self.epsilon)  # (B, T, emb)/Diag
+        # skip connection
+        # same as token_transformer in T2T layer, use v as skip connection
+        y = v + self.dp(self.proj(y))
+
+        return y
+
+
+# @TRANSFORMER_LAYER.register_module()
+# class TokenPerformerLayer(BaseModule):
+#     """Take Performer as T2T Transformer."""
+#
+#     def __init__(self,
+#                  in_dim,
+#                  embed_dims,
+#                  num_heads=1,
+#                  kernel_ratio=0.5,
+#                  proj_drop=0.1,
+#                  ffn_drop=0.1,
+#                  init_cfg=None):
+#         super(TokenPerformerLayer, self).__init__(init_cfg=init_cfg)
+#         assert embed_dims % num_heads == 0, \
+#             'embed_dims should be divisible by num_heads.'
+#         self.embed_dims = embed_dims
+#         self.num_heads = num_heads
+#         self.head_dims = embed_dims // num_heads
+#
+#         self.qkv = nn.Linear(in_dim, embed_dims * 3)
+#         self.proj = nn.Linear(self.embed_dims, self.embed_dims)
+#         self.proj_drop = nn.Dropout(proj_drop)
+#         self.norm1 = nn.LayerNorm(dim)
+#         self.norm2 = nn.LayerNorm(self.emb)
 
 
 class T2T_module(BaseModule):
@@ -241,7 +330,7 @@ class T2T_module(BaseModule):
             tokentransformer_layer1 = dict(
                 type='TokenTransformerLayer',
                 attn_cfgs=ConfigDict(
-                    type='T2TModuleAttention',
+                    type='TokenTransformerAttention',
                     in_dim=in_chans * 7 * 7,
                     embed_dims=token_dim,
                     num_heads=1),
