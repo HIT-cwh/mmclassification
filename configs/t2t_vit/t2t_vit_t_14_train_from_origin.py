@@ -231,6 +231,6 @@ custom_hooks = [dict(type='EMAHook', momentum=0.00004)]  # warm_up may be 0
 
 dist_params = dict(backend='nccl')
 log_level = 'INFO'
-load_from = '../checkpoint/t2t/t2t_vit_t_14_origin.pth'
+load_from = 'checkpoint/t2t/t2t_vit_t_14_origin.pth'
 resume_from = None
 workflow = [('train', 1)]
