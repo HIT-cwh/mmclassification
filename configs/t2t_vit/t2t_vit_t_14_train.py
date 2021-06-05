@@ -49,103 +49,66 @@ model = dict(
             num_classes=1000)))
 
 # pipeline
-policies = [
-    [
-        dict(type='Posterize', bits=4, prob=0.4),
-        dict(type='Rotate', angle=30., prob=0.6)
-    ],
-    [
-        dict(type='Solarize', thr=256 / 9 * 4, prob=0.6),
-        dict(type='AutoContrast', prob=0.5)
-    ],
-    [dict(type='Equalize', prob=0.8),
-     dict(type='Equalize', prob=0.6)],
-    [
-        dict(type='Posterize', bits=5, prob=0.6),
-        dict(type='Posterize', bits=5, prob=0.6)
-    ],
-    [
-        dict(type='Equalize', prob=0.4),
-        dict(type='Solarize', thr=256 / 9 * 5, prob=0.2)
-    ],
-    [
-        dict(type='Equalize', prob=0.4),
-        dict(type='Rotate', angle=30 / 9 * 8, prob=0.8)
-    ],
-    [
-        dict(type='Solarize', thr=256 / 9 * 6, prob=0.6),
-        dict(type='Equalize', prob=0.6)
-    ],
-    [dict(type='Posterize', bits=6, prob=0.8),
-     dict(type='Equalize', prob=1.)],
-    [
-        dict(type='Rotate', angle=10., prob=0.2),
-        dict(type='Solarize', thr=256 / 9, prob=0.6)
-    ],
-    [
-        dict(type='Equalize', prob=0.6),
-        dict(type='Posterize', bits=5, prob=0.6)
-    ],
-    [
-        dict(type='Rotate', angle=30 / 9 * 8, prob=0.8),
-        dict(type='ColorTransform', magnitude=0., prob=0.4)
-    ],
-    [
-        dict(type='Rotate', angle=30., prob=0.4),
-        dict(type='Equalize', prob=0.6)
-    ],
-    [dict(type='Equalize', prob=0.0),
-     dict(type='Equalize', prob=0.8)],
-    [dict(type='Invert', prob=0.6),
-     dict(type='Equalize', prob=1.)],
-    [
-        dict(type='ColorTransform', magnitude=0.4, prob=0.6),
-        dict(type='Contrast', magnitude=0.8, prob=1.)
-    ],
-    [
-        dict(type='Rotate', angle=30 / 9 * 8, prob=0.8),
-        dict(type='ColorTransform', magnitude=0.2, prob=1.)
-    ],
-    [
-        dict(type='ColorTransform', magnitude=0.8, prob=0.8),
-        dict(type='Solarize', thr=256 / 9 * 2, prob=0.8)
-    ],
-    [
-        dict(type='Sharpness', magnitude=0.7, prob=0.4),
-        dict(type='Invert', prob=0.6)
-    ],
-    [
-        dict(
-            type='Shear',
-            magnitude=0.3 / 9 * 5,
-            prob=0.6,
-            direction='horizontal'),
-        dict(type='Equalize', prob=1.)
-    ],
-    [
-        dict(type='ColorTransform', magnitude=0., prob=0.4),
-        dict(type='Equalize', prob=0.6)
-    ],
-    [
-        dict(type='Equalize', prob=0.4),
-        dict(type='Solarize', thr=256 / 9 * 5, prob=0.2)
-    ],
-    [
-        dict(type='Solarize', thr=256 / 9 * 4, prob=0.6),
-        dict(type='AutoContrast', prob=0.6)
-    ],
-    [dict(type='Invert', prob=0.6),
-     dict(type='Equalize', prob=1.)],
-    [
-        dict(type='ColorTransform', magnitude=0.4, prob=0.6),
-        dict(type='Contrast', magnitude=0.8, prob=1.)
-    ],
-    [dict(type='Equalize', prob=0.8),
-     dict(type='Equalize', prob=0.6)],
-]
 dataset_type = 'ImageNet'
 img_norm_cfg = dict(
     mean=[123.675, 116.28, 103.53], std=[58.395, 57.12, 57.375], to_rgb=True)
+
+policies = [
+    dict(type='AutoContrast'),
+    dict(type='Equalize'),
+    dict(type='Invert'),
+    dict(
+        type='Rotate',
+        interpolation='bicubic',
+        magnitude_key='angle',
+        pad_val=tuple([round(x) for x in img_norm_cfg['mean'][::-1]]),
+        magnitude_range=(0, 30)),
+    dict(type='Posterize', magnitude_key='bits', magnitude_range=(4, 0)),
+    dict(type='Solarize', magnitude_key='thr', magnitude_range=(256, 0)),
+    dict(
+        type='SolarizeAdd',
+        magnitude_key='magnitude',
+        magnitude_range=(0, 110)),
+    dict(
+        type='ColorTransform',
+        magnitude_key='magnitude',
+        magnitude_range=(0, 0.9)),
+    dict(type='Contrast', magnitude_key='magnitude', magnitude_range=(0, 0.9)),
+    dict(
+        type='Brightness', magnitude_key='magnitude',
+        magnitude_range=(0, 0.9)),
+    dict(
+        type='Sharpness', magnitude_key='magnitude', magnitude_range=(0, 0.9)),
+    dict(
+        type='Shear',
+        interpolation='bicubic',
+        magnitude_key='magnitude',
+        magnitude_range=(0, 0.3),
+        pad_val=tuple([round(x) for x in img_norm_cfg['mean'][::-1]]),
+        direction='horizontal'),
+    dict(
+        type='Shear',
+        interpolation='bicubic',
+        magnitude_key='magnitude',
+        magnitude_range=(0, 0.3),
+        pad_val=tuple([round(x) for x in img_norm_cfg['mean'][::-1]]),
+        direction='vertical'),
+    dict(
+        type='Translate',
+        interpolation='bicubic',
+        magnitude_key='magnitude',
+        magnitude_range=(0, 0.45),
+        pad_val=tuple([round(x) for x in img_norm_cfg['mean'][::-1]]),
+        direction='horizontal'),
+    dict(
+        type='Translate',
+        interpolation='bicubic',
+        magnitude_key='magnitude',
+        magnitude_range=(0, 0.45),
+        pad_val=tuple([round(x) for x in img_norm_cfg['mean'][::-1]]),
+        direction='vertical')
+]
+
 train_pipeline = [
     dict(
         type='LoadImageFromFile',
@@ -157,8 +120,21 @@ train_pipeline = [
             sys_path='/mnt/lustre/share/pymc/py3')),
     dict(type='RandomResizedCrop', size=224, backend='pillow'),
     dict(type='RandomFlip', flip_prob=0.5, direction='horizontal'),
-    dict(type='AutoAugment', policies=policies),
-    dict(type='RandomErasing', max_area_ratio=1 / 3),
+    dict(
+        type='RandAugment',
+        policies=policies,
+        num_policies=2,
+        total_level=10,
+        magnitude_level=9,
+        magnitude_std=0.5),
+    dict(
+        type='RandomErasing',
+        erase_prob=0.25,
+        min_area_ratio=0.02,
+        max_area_ratio=1 / 3,
+        mode='rand',
+        fill_color=img_norm_cfg['mean'][::-1],
+        fill_std=img_norm_cfg['std'][::-1]),
     dict(type='Normalize', **img_norm_cfg),
     dict(type='ImageToTensor', keys=['img']),
     dict(type='ToTensor', keys=['gt_label']),
@@ -208,6 +184,7 @@ paramwise_cfg = dict(custom_keys={'.backbone.cls_token': dict(decay_mult=0.0)})
 lr_config = dict(
     policy='CosineAnnealing',
     min_lr=1e-5,
+    by_epoch=True,
     warmup_by_epoch=True,
     warmup='linear',
     warmup_iters=5,
