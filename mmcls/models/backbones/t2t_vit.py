@@ -7,10 +7,11 @@ import torch
 import torch.nn as nn
 from mmcv import ConfigDict
 from mmcv.cnn import build_norm_layer
+from mmcv.cnn.bricks import DropPath
 from mmcv.cnn.bricks.registry import (ATTENTION, POSITIONAL_ENCODING,
                                       TRANSFORMER_LAYER,
                                       TRANSFORMER_LAYER_SEQUENCE)
-from mmcv.cnn.bricks.transformer import (BaseTransformerLayer, DropPath,
+from mmcv.cnn.bricks.transformer import (BaseTransformerLayer,
                                          TransformerLayerSequence,
                                          build_dropout,
                                          build_positional_encoding,
