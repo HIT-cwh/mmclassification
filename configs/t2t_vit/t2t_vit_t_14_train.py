@@ -30,7 +30,11 @@ model = dict(
                     dropout_layer=dict(type='DropPath')),
                 operation_order=('norm', 'self_attn', 'norm', 'ffn'),
                 batch_first=True),
-            drop_path_rate=0.1)),
+            drop_path_rate=0.1),
+        init_cfg=[
+            dict(type='TruncNormal', layer='Linear', std=.02),
+            dict(type='Constant', layer='LayerNorm', val=1., bias=0.)
+        ]),
     neck=None,
     head=dict(
         type='LinearClsHead',
@@ -38,11 +42,8 @@ model = dict(
         in_channels=384,
         loss=dict(
             type='LabelSmoothLoss', label_smooth_val=0.1, mode='original'),
-        topk=(1, 5)),
-    init_cfg=[
-        dict(type='TruncNormal', layer='Linear', std=.02),
-        dict(type='Constant', layer='LayerNorm', val=1., bias=0.)
-    ],
+        topk=(1, 5),
+        init_cfg=dict(type='TruncNormal', layer='Linear', std=.02)),
     train_cfg=dict(
         cutmixup=dict(
             mixup_alpha=0.8,
