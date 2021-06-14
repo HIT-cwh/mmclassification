@@ -20,7 +20,6 @@ class AutoAugment(object):
     Learning Augmentation Policies from Data.
 
     <https://arxiv.org/abs/1805.09501>`_.
-
     Args:
         policies (list[list[dict]]): The policies of auto augmentation. Each
             policy in ``policies`` is a specific augmentation policy, and is
@@ -59,7 +58,6 @@ class RandAugment(object):
     Practical automated data augmentation with a reduced search space.
 
     <https://arxiv.org/abs/1909.13719>`_.
-
     Args:
         policies (list[dict]): The policies of random augmentation. Each
             policy in ``policies`` is one specific augmentation policy (dict).
@@ -82,12 +80,10 @@ class RandAugment(object):
             If 0 or negative number, magnitude remains unchanged.
             If str "inf", magnitude is sampled from uniform distribution
                 (range=[min, magnitude]).
-
     Note:
         `magnitude_std` will introduce some randomness to policy, modified by
         https://github.com/rwightman/pytorch-image-models
         When magnitude_std=0, we calculate the magnitude as follows:
-
         .. math::
             magnitude = magnitude_level / total_level * (val2 - val1) + val1
     """
@@ -135,21 +131,11 @@ class RandAugment(object):
             processed_policy = copy.deepcopy(policy)
             magnitude_key = processed_policy.pop('magnitude_key', None)
             if magnitude_key is not None:
-                val1, val2 = processed_policy.pop('magnitude_range')
-                magnitude_value = (self.magnitude_level / self.total_level
-                                   ) * float(val2 - val1) + val1
-
-                # if magnitude_std is positive number or 'inf', move
-                # magnitude_value randomly.
-                maxval = max(val1, val2)
-                minval = min(val1, val2)
-                if self.magnitude_std == 'inf':
-                    magnitude_value = random.uniform(minval, magnitude_value)
-                elif self.magnitude_std > 0:
-                    magnitude_value = random.gauss(magnitude_value,
-                                                   self.magnitude_std)
-                    magnitude_value = min(maxval, max(minval, magnitude_value))
-                processed_policy.update({magnitude_key: magnitude_value})
+                processed_policy.update(
+                    dict(
+                        magnitude=self.magnitude_level,
+                        magnitude_std=self.magnitude_std,
+                        total_level=self.total_level))
             processed_policies.append(processed_policy)
         return processed_policies
 
@@ -169,8 +155,33 @@ class RandAugment(object):
         return repr_str
 
 
+class RandOp(object):
+
+    def __init__(self, magnitude, magnitude_range, magnitude_std, total_level):
+        self.magnitude = magnitude
+        self.magnitude_range = magnitude_range
+        self.magnitude_std = magnitude_std
+        self.total_level = total_level
+
+    def _get_magnitude(self):
+
+        # if magnitude_std is positive number or 'inf', move
+        # magnitude_value randomly.
+        if self.magnitude_std == 'inf':
+            magnitude_value = random.uniform(0, self.magnitude)
+        elif self.magnitude_std > 0:
+            magnitude_value = random.gauss(self.magnitude, self.magnitude_std)
+            magnitude_value = min(self.total_level, max(0, magnitude_value))
+
+        val1, val2 = self.magnitude_range
+        magnitude_value = magnitude_value / self.total_level * float(
+            val2 - val1) + val1
+
+        return magnitude_value
+
+
 @PIPELINES.register_module()
-class Shear(object):
+class Shear(RandOp):
     """Shear images.
 
     Args:
@@ -189,14 +200,14 @@ class Shear(object):
     """
 
     def __init__(self,
-                 magnitude,
                  pad_val=128,
                  prob=0.5,
                  direction='horizontal',
                  random_negative_prob=0.5,
-                 interpolation='bicubic'):
-        assert isinstance(magnitude, (int, float)), 'The magnitude type must '\
-            f'be int or float, but got {type(magnitude)} instead.'
+                 interpolation='bicubic',
+                 **kwargs):
+        super().__init__(**kwargs)
+
         if isinstance(pad_val, int):
             pad_val = tuple([pad_val] * 3)
         elif isinstance(pad_val, tuple):
@@ -213,7 +224,6 @@ class Shear(object):
         assert 0 <= random_negative_prob <= 1.0, 'The random_negative_prob ' \
             f'should be in range [0,1], got {random_negative_prob} instead.'
 
-        self.magnitude = magnitude
         self.pad_val = pad_val
         self.prob = prob
         self.direction = direction
@@ -223,7 +233,8 @@ class Shear(object):
     def __call__(self, results):
         if np.random.rand() > self.prob:
             return results
-        magnitude = random_negative(self.magnitude, self.random_negative_prob)
+        magnitude = self._get_magnitude()
+        magnitude = random_negative(magnitude, self.random_negative_prob)
         for key in results.get('img_fields', ['img']):
             img = results[key]
             img_sheared = mmcv.imshear(
@@ -247,9 +258,8 @@ class Shear(object):
 
 
 @PIPELINES.register_module()
-class Translate(object):
+class Translate(RandOp):
     """Translate images.
-
     Args:
         magnitude (int | float): The magnitude used for translate. Note that
             the offset is calculated by magnitude * size in the corresponding
@@ -269,14 +279,13 @@ class Translate(object):
     """
 
     def __init__(self,
-                 magnitude,
                  pad_val=128,
                  prob=0.5,
                  direction='horizontal',
                  random_negative_prob=0.5,
-                 interpolation='nearest'):
-        assert isinstance(magnitude, (int, float)), 'The magnitude type must '\
-            f'be int or float, but got {type(magnitude)} instead.'
+                 interpolation='nearest',
+                 **kwargs):
+        super().__init__(**kwargs)
         if isinstance(pad_val, int):
             pad_val = tuple([pad_val] * 3)
         elif isinstance(pad_val, tuple):
@@ -293,7 +302,6 @@ class Translate(object):
         assert 0 <= random_negative_prob <= 1.0, 'The random_negative_prob ' \
             f'should be in range [0,1], got {random_negative_prob} instead.'
 
-        self.magnitude = magnitude
         self.pad_val = pad_val
         self.prob = prob
         self.direction = direction
@@ -303,7 +311,8 @@ class Translate(object):
     def __call__(self, results):
         if np.random.rand() > self.prob:
             return results
-        magnitude = random_negative(self.magnitude, self.random_negative_prob)
+        magnitude = self._get_magnitude()
+        magnitude = random_negative(magnitude, self.random_negative_prob)
         for key in results.get('img_fields', ['img']):
             img = results[key]
             height, width = img.shape[:2]
@@ -332,7 +341,7 @@ class Translate(object):
 
 
 @PIPELINES.register_module()
-class Rotate(object):
+class Rotate(RandOp):
     """Rotate images.
 
     Args:
@@ -354,15 +363,14 @@ class Rotate(object):
     """
 
     def __init__(self,
-                 angle,
                  center=None,
                  scale=1.0,
                  pad_val=128,
                  prob=0.5,
                  random_negative_prob=0.5,
-                 interpolation='nearest'):
-        assert isinstance(angle, float), 'The angle type must be float, but ' \
-            f'got {type(angle)} instead.'
+                 interpolation='nearest',
+                 **kwargs):
+        super().__init__(**kwargs)
         if isinstance(center, tuple):
             assert len(center) == 2, 'center as a tuple must have 2 ' \
                 f'elements, got {len(center)} elements instead.'
@@ -385,7 +393,6 @@ class Rotate(object):
         assert 0 <= random_negative_prob <= 1.0, 'The random_negative_prob ' \
             f'should be in range [0,1], got {random_negative_prob} instead.'
 
-        self.angle = angle
         self.center = center
         self.scale = scale
         self.pad_val = pad_val
@@ -396,7 +403,8 @@ class Rotate(object):
     def __call__(self, results):
         if np.random.rand() > self.prob:
             return results
-        angle = random_negative(self.angle, self.random_negative_prob)
+        angle = self._get_magnitude()
+        angle = random_negative(angle, self.random_negative_prob)
         for key in results.get('img_fields', ['img']):
             img = results[key]
             img_rotated = mmcv.imrotate(
@@ -512,7 +520,7 @@ class Equalize(object):
 
 
 @PIPELINES.register_module()
-class Solarize(object):
+class Solarize(RandOp):
     """Solarize images (invert all pixel values above a threshold).
 
     Args:
@@ -522,21 +530,20 @@ class Solarize(object):
             range [0, 1]. Defaults to 0.5.
     """
 
-    def __init__(self, thr, prob=0.5):
-        assert isinstance(thr, (int, float)), 'The thr type must '\
-            f'be int or float, but got {type(thr)} instead.'
+    def __init__(self, prob=0.5, **kwargs):
+        super().__init__(**kwargs)
         assert 0 <= prob <= 1.0, 'The prob should be in range [0,1], ' \
             f'got {prob} instead.'
 
-        self.thr = thr
         self.prob = prob
 
     def __call__(self, results):
         if np.random.rand() > self.prob:
             return results
+        thr = self._get_magnitude()
         for key in results.get('img_fields', ['img']):
             img = results[key]
-            img_solarized = mmcv.solarize(img, thr=self.thr)
+            img_solarized = mmcv.solarize(img, thr=thr)
             results[key] = img_solarized.astype(img.dtype)
         return results
 
@@ -548,7 +555,7 @@ class Solarize(object):
 
 
 @PIPELINES.register_module()
-class SolarizeAdd(object):
+class SolarizeAdd(RandOp):
     """SolarizeAdd images (add a certain value to pixels below a threshold).
 
     Args:
@@ -559,26 +566,24 @@ class SolarizeAdd(object):
             range [0, 1]. Defaults to 0.5.
     """
 
-    def __init__(self, magnitude, thr=128, prob=0.5):
-        assert isinstance(magnitude, (int, float)), 'The thr magnitude must '\
-            f'be int or float, but got {type(magnitude)} instead.'
+    def __init__(self, thr=128, prob=0.5, **kwargs):
+        super().__init__(**kwargs)
         assert isinstance(thr, (int, float)), 'The thr type must '\
             f'be int or float, but got {type(thr)} instead.'
         assert 0 <= prob <= 1.0, 'The prob should be in range [0,1], ' \
             f'got {prob} instead.'
 
-        self.magnitude = magnitude
         self.thr = thr
         self.prob = prob
 
     def __call__(self, results):
         if np.random.rand() > self.prob:
             return results
+        magnitude = int(self._get_magnitude())
         for key in results.get('img_fields', ['img']):
             img = results[key]
             img_solarized = np.where(img < self.thr,
-                                     np.minimum(img + self.magnitude, 255),
-                                     img)
+                                     np.minimum(img + magnitude, 255), img)
             results[key] = img_solarized.astype(img.dtype)
         return results
 
@@ -591,7 +596,7 @@ class SolarizeAdd(object):
 
 
 @PIPELINES.register_module()
-class Posterize(object):
+class Posterize(RandOp):
     """Posterize images (reduce the number of bits for each color channel).
 
     Args:
@@ -601,20 +606,20 @@ class Posterize(object):
             range [0, 1]. Defaults to 0.5.
     """
 
-    def __init__(self, bits, prob=0.5):
-        assert bits <= 8, f'The bits must be less than 8, got {bits} instead.'
+    def __init__(self, prob=0.5, **kwargs):
+        super().__init__(**kwargs)
         assert 0 <= prob <= 1.0, 'The prob should be in range [0,1], ' \
             f'got {prob} instead.'
 
-        self.bits = int(bits)
         self.prob = prob
 
     def __call__(self, results):
         if np.random.rand() > self.prob:
             return results
+        bits = int(np.ceil(self._get_magnitude()))
         for key in results.get('img_fields', ['img']):
             img = results[key]
-            img_posterized = mmcv.posterize(img, bits=self.bits)
+            img_posterized = mmcv.posterize(img, bits=bits)
             results[key] = img_posterized.astype(img.dtype)
         return results
 
@@ -626,7 +631,7 @@ class Posterize(object):
 
 
 @PIPELINES.register_module()
-class Contrast(object):
+class Contrast(RandOp):
     """Adjust images contrast.
 
     Args:
@@ -640,22 +645,21 @@ class Contrast(object):
             negative, which should be in range [0,1]. Defaults to 0.5.
     """
 
-    def __init__(self, magnitude, prob=0.5, random_negative_prob=0.5):
-        assert isinstance(magnitude, (int, float)), 'The magnitude type must '\
-            f'be int or float, but got {type(magnitude)} instead.'
+    def __init__(self, prob=0.5, random_negative_prob=0.5, **kwargs):
+        super().__init__(**kwargs)
         assert 0 <= prob <= 1.0, 'The prob should be in range [0,1], ' \
             f'got {prob} instead.'
         assert 0 <= random_negative_prob <= 1.0, 'The random_negative_prob ' \
             f'should be in range [0,1], got {random_negative_prob} instead.'
 
-        self.magnitude = magnitude
         self.prob = prob
         self.random_negative_prob = random_negative_prob
 
     def __call__(self, results):
         if np.random.rand() > self.prob:
             return results
-        magnitude = random_negative(self.magnitude, self.random_negative_prob)
+        magnitude = self._get_magnitude()
+        magnitude = random_negative(magnitude, self.random_negative_prob)
         for key in results.get('img_fields', ['img']):
             img = results[key]
             img_contrasted = mmcv.adjust_contrast(img, factor=1 + magnitude)
@@ -671,7 +675,7 @@ class Contrast(object):
 
 
 @PIPELINES.register_module()
-class ColorTransform(object):
+class ColorTransform(RandOp):
     """Adjust images color balance.
 
     Args:
@@ -684,22 +688,21 @@ class ColorTransform(object):
             negative, which should be in range [0,1]. Defaults to 0.5.
     """
 
-    def __init__(self, magnitude, prob=0.5, random_negative_prob=0.5):
-        assert isinstance(magnitude, (int, float)), 'The magnitude type must '\
-            f'be int or float, but got {type(magnitude)} instead.'
+    def __init__(self, prob=0.5, random_negative_prob=0.5, **kwargs):
+        super().__init__(**kwargs)
         assert 0 <= prob <= 1.0, 'The prob should be in range [0,1], ' \
             f'got {prob} instead.'
         assert 0 <= random_negative_prob <= 1.0, 'The random_negative_prob ' \
             f'should be in range [0,1], got {random_negative_prob} instead.'
 
-        self.magnitude = magnitude
         self.prob = prob
         self.random_negative_prob = random_negative_prob
 
     def __call__(self, results):
         if np.random.rand() > self.prob:
             return results
-        magnitude = random_negative(self.magnitude, self.random_negative_prob)
+        magnitude = self._get_magnitude()
+        magnitude = random_negative(magnitude, self.random_negative_prob)
         for key in results.get('img_fields', ['img']):
             img = results[key]
             img_color_adjusted = mmcv.adjust_color(img, alpha=1 + magnitude)
@@ -715,7 +718,7 @@ class ColorTransform(object):
 
 
 @PIPELINES.register_module()
-class Brightness(object):
+class Brightness(RandOp):
     """Adjust images brightness.
 
     Args:
@@ -729,22 +732,21 @@ class Brightness(object):
             negative, which should be in range [0,1]. Defaults to 0.5.
     """
 
-    def __init__(self, magnitude, prob=0.5, random_negative_prob=0.5):
-        assert isinstance(magnitude, (int, float)), 'The magnitude type must '\
-            f'be int or float, but got {type(magnitude)} instead.'
+    def __init__(self, prob=0.5, random_negative_prob=0.5, **kwargs):
+        super().__init__(**kwargs)
         assert 0 <= prob <= 1.0, 'The prob should be in range [0,1], ' \
             f'got {prob} instead.'
         assert 0 <= random_negative_prob <= 1.0, 'The random_negative_prob ' \
             f'should be in range [0,1], got {random_negative_prob} instead.'
 
-        self.magnitude = magnitude
         self.prob = prob
         self.random_negative_prob = random_negative_prob
 
     def __call__(self, results):
         if np.random.rand() > self.prob:
             return results
-        magnitude = random_negative(self.magnitude, self.random_negative_prob)
+        magnitude = self._get_magnitude()
+        magnitude = random_negative(magnitude, self.random_negative_prob)
         for key in results.get('img_fields', ['img']):
             img = results[key]
             img_brightened = mmcv.adjust_brightness(img, factor=1 + magnitude)
@@ -760,7 +762,7 @@ class Brightness(object):
 
 
 @PIPELINES.register_module()
-class Sharpness(object):
+class Sharpness(RandOp):
     """Adjust images sharpness.
 
     Args:
@@ -774,22 +776,21 @@ class Sharpness(object):
             negative, which should be in range [0,1]. Defaults to 0.5.
     """
 
-    def __init__(self, magnitude, prob=0.5, random_negative_prob=0.5):
-        assert isinstance(magnitude, (int, float)), 'The magnitude type must '\
-            f'be int or float, but got {type(magnitude)} instead.'
+    def __init__(self, prob=0.5, random_negative_prob=0.5, **kwargs):
+        super().__init__(**kwargs)
         assert 0 <= prob <= 1.0, 'The prob should be in range [0,1], ' \
             f'got {prob} instead.'
         assert 0 <= random_negative_prob <= 1.0, 'The random_negative_prob ' \
             f'should be in range [0,1], got {random_negative_prob} instead.'
 
-        self.magnitude = magnitude
         self.prob = prob
         self.random_negative_prob = random_negative_prob
 
     def __call__(self, results):
         if np.random.rand() > self.prob:
             return results
-        magnitude = random_negative(self.magnitude, self.random_negative_prob)
+        magnitude = self._get_magnitude()
+        magnitude = random_negative(magnitude, self.random_negative_prob)
         for key in results.get('img_fields', ['img']):
             img = results[key]
             img_sharpened = mmcv.adjust_sharpness(img, factor=1 + magnitude)
