@@ -33,12 +33,15 @@ model = dict(
             drop_path_rate=0.1)),
     neck=None,
     head=dict(
-        type='T2THead',
+        type='LinearClsHead',
         num_classes=1000,
         in_channels=384,
         loss=dict(type='LabelSmoothLoss', label_smooth_val=0.1),
-        topk=(1, 5),
-    ),
+        topk=(1, 5)),
+    init_cfg=[
+        dict(type='TruncNormal', layer='Linear', std=.02),
+        dict(type='Constant', layer='LayerNorm', val=1., bias=0.)
+    ],
     train_cfg=dict(
         cutmixup=dict(
             mixup_alpha=0.8,

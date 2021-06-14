@@ -53,7 +53,11 @@ def test_t2t_backbone():
                     dropout_layer=dict(type='DropPath')),
                 operation_order=('norm', 'self_attn', 'norm', 'ffn'),
                 batch_first=True),
-            drop_path_rate=0.1))
+            drop_path_rate=0.1),
+        init_cfg=[
+            dict(type='TruncNormal', layer='Linear', std=.02),
+            dict(type='Constant', layer='LayerNorm', val=1., bias=0.)
+        ])
     cfg = Config(model_cfg)
 
     with pytest.raises(TypeError):
