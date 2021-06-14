@@ -12,9 +12,15 @@ class ImageClassifier(BaseClassifier):
                  backbone,
                  neck=None,
                  head=None,
+                 pretrained=None,
                  train_cfg=None,
                  init_cfg=None):
-        super(ImageClassifier, self).__init__(init_cfg=init_cfg)
+        super(ImageClassifier, self).__init__(init_cfg)
+
+        if pretrained is not None:
+            warnings.warn('DeprecationWarning: pretrained is a deprecated \
+                key, please consider using init_cfg')
+            self.init_cfg = dict(type='Pretrained', checkpoint=pretrained)
 
         self.backbone = build_backbone(backbone)
 
@@ -43,6 +49,20 @@ class ImageClassifier(BaseClassifier):
                     warnings.warn('The cutmix attribute will be deprecated.'
                                   'Please use cutmixup instead.')
                     self.cutmix = BatchCutMixLayer(**cutmix_cfg)
+
+        # self.init_weights(pretrained=pretrained)
+
+    # def init_weights(self, pretrained=None):
+    #     super(ImageClassifier, self).init_weights(pretrained)
+    #     self.backbone.init_weights(pretrained=pretrained)
+    #     if self.with_neck:
+    #         if isinstance(self.neck, nn.Sequential):
+    #             for m in self.neck:
+    #                 m.init_weights()
+    #         else:
+    #             self.neck.init_weights()
+    #     if self.with_head:
+    #         self.head.init_weights()
 
     def extract_feat(self, img):
         """Directly extract features from the backbone + neck."""
