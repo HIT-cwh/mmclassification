@@ -1,7 +1,7 @@
 import torch
 
 from mmcls.models.heads import (ClsHead, LinearClsHead, MultiLabelClsHead,
-                                MultiLabelLinearClsHead, T2THead)
+                                MultiLabelLinearClsHead)
 
 
 def test_cls_head():
@@ -24,15 +24,6 @@ def test_cls_head():
 
     # test LinearClsHead
     head = LinearClsHead(10, 100)
-    fake_cls_score = torch.rand(4, 10)
-    fake_gt_label = torch.randint(0, 10, (4, ))
-
-    losses = head.loss(fake_cls_score, fake_gt_label)
-    assert losses['loss'].item() > 0
-
-    # test T2THead
-    head = T2THead(10, 100)
-    head.init_weights()
     fake_cls_score = torch.rand(4, 10)
     fake_gt_label = torch.randint(0, 10, (4, ))
 
