@@ -1,10 +1,8 @@
-import logging
-
 import torch
 import torch.nn as nn
 import torch.utils.checkpoint as cp
 from mmcv.cnn import ConvModule, constant_init, normal_init
-from mmcv.runner import load_checkpoint
+from mmcv.runner import BaseModule
 from torch.nn.modules.batchnorm import _BatchNorm
 
 from mmcls.models.utils import channel_shuffle
@@ -12,7 +10,7 @@ from ..builder import BACKBONES
 from .base_backbone import BaseBackbone
 
 
-class InvertedResidual(nn.Module):
+class InvertedResidual(BaseModule):
     """InvertedResidual block for ShuffleNetV2 backbone.
 
     Args:
@@ -39,8 +37,9 @@ class InvertedResidual(nn.Module):
                  conv_cfg=None,
                  norm_cfg=dict(type='BN'),
                  act_cfg=dict(type='ReLU'),
-                 with_cp=False):
-        super(InvertedResidual, self).__init__()
+                 with_cp=False,
+                 init_cfg=None):
+        super(InvertedResidual, self).__init__(init_cfg)
         self.stride = stride
         self.with_cp = with_cp
 
@@ -162,8 +161,9 @@ class ShuffleNetV2(BaseBackbone):
                  norm_cfg=dict(type='BN'),
                  act_cfg=dict(type='ReLU'),
                  norm_eval=False,
-                 with_cp=False):
-        super(ShuffleNetV2, self).__init__()
+                 with_cp=False,
+                 init_cfg=None):
+        super(ShuffleNetV2, self).__init__(init_cfg)
         self.stage_blocks = [4, 8, 4]
         for index in out_indices:
             if index not in range(0, 4):
@@ -255,25 +255,25 @@ class ShuffleNetV2(BaseBackbone):
             for param in m.parameters():
                 param.requires_grad = False
 
-    def init_weights(self, pretrained=None):
-        if isinstance(pretrained, str):
-            logger = logging.getLogger()
-            load_checkpoint(self, pretrained, strict=False, logger=logger)
-        elif pretrained is None:
-            for name, m in self.named_modules():
-                if isinstance(m, nn.Conv2d):
-                    if 'conv1' in name:
-                        normal_init(m, mean=0, std=0.01)
-                    else:
-                        normal_init(m, mean=0, std=1.0 / m.weight.shape[1])
-                elif isinstance(m, (_BatchNorm, nn.GroupNorm)):
-                    constant_init(m.weight, val=1, bias=0.0001)
-                    if isinstance(m, _BatchNorm):
-                        if m.running_mean is not None:
-                            nn.init.constant_(m.running_mean, 0)
-        else:
-            raise TypeError('pretrained must be a str or None. But received '
-                            f'{type(pretrained)}')
+    def init_weights(self):
+        super(ShuffleNetV2, self).init_weights()
+
+        if (isinstance(self.init_cfg, dict)
+                and self.init_cfg['type'] == 'Pretrained'):
+            # Suppress default init if use pretrained model.
+            return
+
+        for name, m in self.named_modules():
+            if isinstance(m, nn.Conv2d):
+                if 'conv1' in name:
+                    normal_init(m, mean=0, std=0.01)
+                else:
+                    normal_init(m, mean=0, std=1.0 / m.weight.shape[1])
+            elif isinstance(m, (_BatchNorm, nn.GroupNorm)):
+                constant_init(m.weight, val=1, bias=0.0001)
+                if isinstance(m, _BatchNorm):
+                    if m.running_mean is not None:
+                        nn.init.constant_(m.running_mean, 0)
 
     def forward(self, x):
         x = self.conv1(x)

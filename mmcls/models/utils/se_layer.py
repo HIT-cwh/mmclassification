@@ -1,9 +1,13 @@
 import mmcv
 import torch.nn as nn
 from mmcv.cnn import ConvModule
+from mmcv.runner import BaseModule
+
+from .make_divisible import make_divisible
 
 
-class SELayer(nn.Module):
+# class SELayer(nn.Module):
+class SELayer(BaseModule):
     """Squeeze-and-Excitation Module.
 
     Args:
@@ -23,26 +27,31 @@ class SELayer(nn.Module):
     def __init__(self,
                  channels,
                  ratio=16,
+                 bias='auto',
                  conv_cfg=None,
-                 act_cfg=(dict(type='ReLU'), dict(type='Sigmoid'))):
-        super(SELayer, self).__init__()
+                 act_cfg=(dict(type='ReLU'), dict(type='Sigmoid')),
+                 init_cfg=None):
+        super(SELayer, self).__init__(init_cfg)
         if isinstance(act_cfg, dict):
             act_cfg = (act_cfg, act_cfg)
         assert len(act_cfg) == 2
         assert mmcv.is_tuple_of(act_cfg, dict)
         self.global_avgpool = nn.AdaptiveAvgPool2d(1)
+        squeeze_channels = make_divisible(channels // ratio, 8)
         self.conv1 = ConvModule(
             in_channels=channels,
-            out_channels=int(channels / ratio),
+            out_channels=squeeze_channels,
             kernel_size=1,
             stride=1,
+            bias=bias,
             conv_cfg=conv_cfg,
             act_cfg=act_cfg[0])
         self.conv2 = ConvModule(
-            in_channels=int(channels / ratio),
+            in_channels=squeeze_channels,
             out_channels=channels,
             kernel_size=1,
             stride=1,
+            bias=bias,
             conv_cfg=conv_cfg,
             act_cfg=act_cfg[1])
 

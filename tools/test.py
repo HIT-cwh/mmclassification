@@ -69,6 +69,11 @@ def parse_args():
         default='none',
         help='job launcher')
     parser.add_argument('--local_rank', type=int, default=0)
+    parser.add_argument(
+        '--device',
+        choices=['cpu', 'cuda'],
+        default='cuda',
+        help='device used for testing')
     args = parser.parse_args()
     if 'LOCAL_RANK' not in os.environ:
         os.environ['LOCAL_RANK'] = str(args.local_rank)
@@ -87,6 +92,9 @@ def main():
     cfg.model.pretrained = None
     cfg.data.test.test_mode = True
 
+    assert args.metrics or args.out, \
+        'Please specify at least one of output path and evaluation metrics.'
+
     # init distributed env first, since logger depends on the dist info.
     if args.launcher == 'none':
         distributed = False
@@ -96,13 +104,14 @@ def main():
 
     # build the dataloader
     dataset = build_dataset(cfg.data.test)
+    # the extra round_up data will be removed during gpu/cpu collect
     data_loader = build_dataloader(
         dataset,
         samples_per_gpu=cfg.data.samples_per_gpu,
         workers_per_gpu=cfg.data.workers_per_gpu,
         dist=distributed,
         shuffle=False,
-        round_up=False)
+        round_up=True)
 
     # build the model and load checkpoint
     model = build_classifier(cfg.model)
@@ -121,7 +130,10 @@ def main():
         CLASSES = ImageNet.CLASSES
 
     if not distributed:
-        model = MMDataParallel(model, device_ids=[0])
+        if args.device == 'cpu':
+            model = model.cpu()
+        else:
+            model = MMDataParallel(model, device_ids=[0])
         model.CLASSES = CLASSES
         show_kwargs = {} if args.show_options is None else args.show_options
         outputs = single_gpu_test(model, data_loader, args.show, args.show_dir,
@@ -136,31 +148,26 @@ def main():
 
     rank, _ = get_dist_info()
     if rank == 0:
+        results = {}
         if args.metrics:
-            results = dataset.evaluate(outputs, args.metrics,
-                                       args.metric_options)
-            for k, v in results.items():
+            eval_results = dataset.evaluate(outputs, args.metrics,
+                                            args.metric_options)
+            results.update(eval_results)
+            for k, v in eval_results.items():
                 print(f'\n{k} : {v:.2f}')
-        else:
-            warnings.warn('Evaluation metrics are not specified.')
+        if args.out:
             scores = np.vstack(outputs)
             pred_score = np.max(scores, axis=1)
             pred_label = np.argmax(scores, axis=1)
             pred_class = [CLASSES[lb] for lb in pred_label]
-            results = {
+            results.update({
+                'class_scores': scores,
                 'pred_score': pred_score,
                 'pred_label': pred_label,
                 'pred_class': pred_class
-            }
-            if not args.out:
-                print('\nthe predicted result for the first element is '
-                      f'pred_score = {pred_score[0]:.2f}, '
-                      f'pred_label = {pred_label[0]} '
-                      f'and pred_class = {pred_class[0]}. '
-                      'Specify --out to save all results to files.')
-    if args.out and rank == 0:
-        print(f'\nwriting results to {args.out}')
-        mmcv.dump(results, args.out)
+            })
+            print(f'\ndumping results to {args.out}')
+            mmcv.dump(results, args.out)
 
 
 if __name__ == '__main__':

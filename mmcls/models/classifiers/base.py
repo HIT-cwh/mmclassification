@@ -6,9 +6,8 @@ import cv2
 import mmcv
 import torch
 import torch.distributed as dist
-import torch.nn as nn
 from mmcv import color_val
-from mmcv.utils import print_log
+from mmcv.runner import BaseModule
 
 # TODO import `auto_fp16` from mmcv and delete them from mmcls
 try:
@@ -19,11 +18,11 @@ except ImportError:
     from mmcls.core import auto_fp16
 
 
-class BaseClassifier(nn.Module, metaclass=ABCMeta):
+class BaseClassifier(BaseModule, metaclass=ABCMeta):
     """Base class for classifiers."""
 
-    def __init__(self):
-        super(BaseClassifier, self).__init__()
+    def __init__(self, init_cfg=None):
+        super(BaseClassifier, self).__init__(init_cfg)
         self.fp16_enabled = False
 
     @property
@@ -56,10 +55,6 @@ class BaseClassifier(nn.Module, metaclass=ABCMeta):
     @abstractmethod
     def simple_test(self, img, **kwargs):
         pass
-
-    def init_weights(self, pretrained=None):
-        if pretrained is not None:
-            print_log(f'load model from: {pretrained}', logger='root')
 
     def forward_test(self, imgs, **kwargs):
         """
@@ -138,15 +133,14 @@ class BaseClassifier(nn.Module, metaclass=ABCMeta):
                 and reserved.
 
         Returns:
-            dict: It should contain at least 3 keys: ``loss``, ``log_vars``,
-                ``num_samples``.
-                ``loss`` is a tensor for back propagation, which can be a
-                weighted sum of multiple losses.
-                ``log_vars`` contains all the variables to be sent to the
-                logger.
-                ``num_samples`` indicates the batch size (when the model is
-                DDP, it means the batch size on each GPU), which is used for
-                averaging the logs.
+            dict: Dict of outputs. The following fields are contained.
+                - loss (torch.Tensor): A tensor for back propagation, which \
+                    can be a weighted sum of multiple losses.
+                - log_vars (dict): Dict contains all the variables to be sent \
+                    to the logger.
+                - num_samples (int): Indicates the batch size (when the model \
+                    is DDP, it means the batch size on each GPU), which is \
+                    used for averaging the logs.
         """
         losses = self(**data)
         loss, log_vars = self._parse_losses(losses)
@@ -184,8 +178,8 @@ class BaseClassifier(nn.Module, metaclass=ABCMeta):
         """Draw `result` over `img`.
 
         Args:
-            img (str or Tensor): The image to be displayed.
-            result (Tensor): The classification results to draw over `img`.
+            img (str or ndarray): The image to be displayed.
+            result (dict): The classification results to draw over `img`.
             text_color (str or tuple or :obj:`Color`): Color of texts.
             font_scale (float): Font scales of texts.
             row_width (int): width between each row of results on the image.
@@ -198,7 +192,7 @@ class BaseClassifier(nn.Module, metaclass=ABCMeta):
                 Default: None.
 
         Returns:
-            img (Tensor): Only if not `show` or `out_file`
+            img (ndarray): Only if not `show` or `out_file`
         """
         img = mmcv.imread(img)
         img = img.copy()

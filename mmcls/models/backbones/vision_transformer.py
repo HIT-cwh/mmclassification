@@ -374,10 +374,12 @@ class HybridEmbed(nn.Module):
 
 @BACKBONES.register_module()
 class VisionTransformer(BaseBackbone):
-    """ Vision Transformer
+    """Vision Transformer.
+
     A PyTorch impl of : `An Image is Worth 16x16 Words:
-    Transformers for Image Recognition at Scale`  -
-        https://arxiv.org/abs/2010.11929
+    Transformers for Image Recognition at Scale
+    <https://arxiv.org/abs/2010.11929>`_
+
     Args:
         num_layers (int): Depth of transformer
         embed_dim (int): Embedding dimension
@@ -453,13 +455,9 @@ class VisionTransformer(BaseBackbone):
             norm_cfg, embed_dim, postfix=1)
         self.add_module(self.norm1_name, norm1)
 
-        self.init_weights()
-
-    def init_weights(self, pretrained=None):
-        super(VisionTransformer, self).init_weights(pretrained)
-        if pretrained is None:
-            # Modified from ClassyVision
-            nn.init.normal_(self.pos_embed, std=0.02)
+    def init_weights(self):
+        super(VisionTransformer, self).init_weights()
+        nn.init.normal_(self.pos_embed, std=0.02)
 
     @property
     def norm1(self):

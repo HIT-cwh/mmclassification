@@ -97,8 +97,9 @@ class RegNet(ResNet):
                  norm_cfg=dict(type='BN', requires_grad=True),
                  norm_eval=False,
                  with_cp=False,
-                 zero_init_residual=True):
-        super(ResNet, self).__init__()
+                 zero_init_residual=True,
+                 init_cfg=None):
+        super(ResNet, self).__init__(init_cfg)
 
         # Generate RegNet parameters first
         if isinstance(arch, str):
@@ -218,8 +219,9 @@ class RegNet(ResNet):
             divisor (int): The divisor of channels. Defaults to 8.
 
         Returns:
-            list, int: return a list of widths of each stage and the number of
-                stages
+            tuple: tuple containing:
+                - list: Widths of each stage.
+                - int: The number of stages.
         """
         assert width_slope >= 0
         assert initial_width > 0

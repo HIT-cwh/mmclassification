@@ -1,12 +1,90 @@
 ## Changelog
 
+### v0.13.0(3/7/2021)
+
+- Support Swin-Transformer backbone and add training configs for Swin-Transformer on ImageNet.
+
+#### New Features
+
+- Support Swin-Transformer backbone and add training configs for Swin-Transformer on ImageNet. (#271)
+- Add pretained model of RegNetX. (#269)
+- Support adding custom hooks in config file. (#305)
+- Improve and add Chinese translation of `CONTRIBUTING.md` and all tools tutorials. (#320)
+- Dump config before training. (#282)
+- Add torchscript and torchserve deployment tools. (#279, #284)
+
+#### Improvements
+
+- Improve test tools and add some new tools. (#322)
+- Correct MobilenetV3 backbone structure and add pretained models. (#291)
+- Refactor `PatchEmbed` and `HybridEmbed` as independent components. (#330)
+- Refactor mixup and cutmix as `Augments` to support more funtions. (#278)
+- Refactor weights initialization method. (#270, #318, #319)
+- Refactor `LabelSmoothLoss` to support multiple calculation formulas. (#285)
+
+#### Bug Fixes
+
+- Fix bug for CPU training. (#286)
+- Fix missing test data when `num_imgs` can not be evenly divided by `num_gpus`. (#299)
+- Fix build compatible with pytorch v1.3-1.5. (#301)
+- Fix `magnitude_std` bug in `RandAugment`. (#309)
+- Fix bug when `samples_per_gpu` is 1. (#311)
+
+### v0.12.0(3/6/2021)
+
+- Finish adding Chinese tutorials and build Chinese documentation on readthedocs.
+- Update ResNeXt checkpoints and ResNet checkpoints on CIFAR.
+
+#### New Features
+
+- Improve and add Chinese translation of `data_pipeline.md` and `new_modules.md`. (#265)
+- Build Chinese translation on readthedocs. (#267)
+- Add an argument efficientnet_style to `RandomResizedCrop` and `CenterCrop`. (#268)
+
+#### Improvements
+
+- Only allow directory operation when rank==0 when testing. (#258)
+- Fix typo in `base_head`. (#274)
+- Update ResNeXt checkpoints. (#283)
+
+#### Bug Fixes
+
+- Add attribute `data.test` in MNIST configs. (#264)
+- Download CIFAR/MNIST dataset only on rank 0. (#273)
+- Fix MMCV version compatibility. (#276)
+- Fix CIFAR color channels bug and update checkpoints in model zoo. (#280)
+
+### v0.11.1(21/5/2021)
+
+- Refine `new_dataset.md` and add Chinese translation of `finture.md`, `new_dataset.md`.
+
+#### New Features
+
+- Add `dim` argument for `GlobalAveragePooling`. (#236)
+- Add random noise to `RandAugment` magnitude. (#240)
+- Refine `new_dataset.md` and add Chinese translation of `finture.md`, `new_dataset.md`. (#243)
+
+#### Improvements
+
+- Refactor arguments passing for Heads. (#239)
+- Allow more flexible `magnitude_range` in `RandAugment`. (#249)
+- Inherits MMCV registry so that in the future OpenMMLab repos like MMDet and MMSeg could directly use the backbones supported in MMCls. (#252)
+
+#### Bug Fixes
+
+- Fix typo in `analyze_results.py`. (#237)
+- Fix typo in unittests. (#238)
+- Check if specified tmpdir exists when testing to avoid deleting existing data. (#242 & #258)
+- Add missing config files in `MANIFEST.in`. (#250 & #255)
+- Use temporary directory under shared directory to collect results to avoid unavailability of temporary directory for multi-node testing. (#251)
+
 ### v0.11.0(1/5/2021)
 
-- Support cutmix trick. (#198)
-- Support random augmentation. (#201)
-- Add `tools/deployment/test.py` as a ONNX runtime test tool. (#212)
-- Support ViT backbone and add training configs for ViT on ImageNet. (#214)
-- Add Chinese `README.md` and some Chinese tutorials. (#221)
+- Support cutmix trick.
+- Support random augmentation.
+- Add `tools/deployment/test.py` as a ONNX runtime test tool.
+- Support ViT backbone and add training configs for ViT on ImageNet.
+- Add Chinese `README.md` and some Chinese tutorials.
 
 #### New Features
 
