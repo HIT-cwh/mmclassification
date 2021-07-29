@@ -61,7 +61,7 @@ class T2TModuleAttention(BaseModule):
         self.embed_dims = embed_dims
         self.num_heads = num_heads
         head_dim = in_dim // num_heads
-        self.scale = qk_scale or head_dim ** -0.5
+        self.scale = qk_scale or head_dim**-0.5
 
         self.qkv = nn.Linear(in_dim, embed_dims * 3, bias=qkv_bias)
         self.attn_drop = nn.Dropout(attn_drop)
@@ -135,7 +135,7 @@ class T2TBlockAttention(BaseModule):
         self.num_heads = num_heads
         head_dim = embed_dims // num_heads
 
-        self.scale = qk_scale or head_dim ** -0.5
+        self.scale = qk_scale or head_dim**-0.5
 
         self.qkv = nn.Linear(embed_dims, embed_dims * 3, bias=qkv_bias)
         self.attn_drop = nn.Dropout(attn_drop)

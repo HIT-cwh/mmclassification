@@ -147,6 +147,7 @@ test_pipeline = [
     dict(type='ImageToTensor', keys=['img']),
     dict(type='Collect', keys=['img'])
 ]
+
 data = dict(
     samples_per_gpu=128,
     workers_per_gpu=4,
@@ -170,10 +171,7 @@ evaluation = dict(interval=1, metric='accuracy')
 # optimizer
 paramwise_cfg = dict(custom_keys={'.backbone.cls_token': dict(decay_mult=0.0)})
 optimizer = dict(
-    type='AdamW',
-    lr=0.001,
-    weight_decay=0.05,
-    paramwise_cfg=paramwise_cfg)
+    type='AdamW', lr=0.001, weight_decay=0.05, paramwise_cfg=paramwise_cfg)
 optimizer_config = dict(grad_clip=None)
 
 # learning policy
